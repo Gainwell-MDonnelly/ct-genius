@@ -27,11 +27,12 @@ A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 ### MOVEit
 - To do automation need service user. SSH key tied to Gainwell login. Can't add Linux SSH Key in MOVEit per security 
 - mft.gainwelltechnologies.com - **54.80.94.146**
+   - Use Gainwell ID (gt114477)
 
 ### Scripts
-tar
+**tar - Zips and compress files** `tar -czf AIM_T_RE_DEATH_CHG_0.tar.gz AIM_T_RE_DEATH_CHG_0_test.dat`
 
-`tar -czf AIM_T_RE_DEATH_CHG_0.tar.gz AIM_T_RE_DEATH_CHG_0_test.dat`
+
 
 ## Tasks
 - [x] Create scripts for copy
