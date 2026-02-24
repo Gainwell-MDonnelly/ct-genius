@@ -18,25 +18,29 @@ readonly SCRIPT_NAME=$(basename "$0")
 readonly SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
 # Directory settings
-readonly SOURCE_DIR="${SOURCE_DIR:-/data/incoming}"
-readonly ARCHIVE_DIR="${ARCHIVE_DIR:-/data/archive}"
-readonly PROCESSED_DIR="${PROCESSED_DIR:-/data/processed}"
+readonly SOURCE_DIR="${SOURCE_DIR:-/delphix/DeIdentified/dev}"
+readonly ARCHIVE_DIR="${ARCHIVE_DIR:-/delphix/DeIdentified/archive}"
+readonly PROCESSED_DIR="${PROCESSED_DIR:-/delphix/DeIdentified/processed}"
 readonly TEMP_DIR="${TEMP_DIR:-/tmp/file_transfer}"
 
 # SFTP settings
-readonly SFTP_HOST="${SFTP_HOST:-sftp.example.com}"
+readonly SFTP_HOST="${SFTP_HOST:-54.80.94.146}"
 readonly SFTP_PORT="${SFTP_PORT:-22}"
-readonly SFTP_USER="${SFTP_USER:-sftpuser}"
-readonly SFTP_REMOTE_DIR="${SFTP_REMOTE_DIR:-/upload}"
-readonly SFTP_KEY_FILE="${SFTP_KEY_FILE:-/home/${SFTP_USER}/.ssh/id_rsa}"
+readonly SFTP_USER="${SFTP_USER:-gt114477}"
+readonly SFTP_REMOTE_DIR="${SFTP_REMOTE_DIR:-/genius/ctedw/utility}"
+# SSH key settings
+readonly SSH_KEY_DIR="${SSH_KEY_DIR:-$HOME/.ssh}"
+readonly SSH_KEY_FILE="${SSH_KEY_FILE:-$SSH_KEY_DIR/id_rsa_sftp}"
+readonly SSH_KEY_TYPE="${SSH_KEY_TYPE:-rsa}"  # rsa, ed25519, ecdsa
+readonly SSH_KEY_BITS="${SSH_KEY_BITS:-4096}"  # For RSA keys
 
 # Logging settings
-readonly LOG_DIR="${LOG_DIR:-/var/log/file_transfer}"
+readonly LOG_DIR="${LOG_DIR:-:/home/oracle/var/log/file_transfer/}"
 readonly LOG_FILE="${LOG_DIR}/file_transfer_$(date +%Y%m%d).log"
 readonly LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-30}"
 
 # Lock file to prevent concurrent execution
-readonly LOCK_FILE="/var/run/${SCRIPT_NAME%.sh}.lock"
+readonly LOCK_FILE="/home/oracle/var/run/${SCRIPT_NAME%.sh}.lock"
 
 # File patterns (comma-separated list of patterns to include)
 readonly FILE_PATTERNS="${FILE_PATTERNS:-*}"
@@ -112,7 +116,7 @@ validate_prerequisites() {
     log_info "Validating prerequisites..."
     
     # Check required commands
-    local required_commands=("tar" "gzip" "sftp" "ssh" "find" "mktemp")
+    local required_commands=("tar" "gzip" "sftp" "ssh" "ssh-keygen" "find" "mktemp")
     for cmd in "${required_commands[@]}"; do
         if ! command -v "$cmd" &>/dev/null; then
             error_exit "Required command not found: $cmd" 2
@@ -128,19 +132,78 @@ validate_prerequisites() {
         fi
     done
     
-    # Check SFTP key file exists and has correct permissions
-    if [[ ! -f "$SFTP_KEY_FILE" ]]; then
-        error_exit "SFTP key file not found: $SFTP_KEY_FILE" 4
-    fi
-    
-    # Verify key file permissions (should be 600 or 400)
-    local key_perms
-    key_perms=$(stat -c %a "$SFTP_KEY_FILE" 2>/dev/null || stat -f %Lp "$SFTP_KEY_FILE" 2>/dev/null)
-    if [[ "$key_perms" != "600" && "$key_perms" != "400" ]]; then
-        log_warn "SFTP key file permissions ($key_perms) are not secure. Consider chmod 600."
+    # Ensure SSH directory exists with correct permissions
+    if [[ ! -d "$SSH_KEY_DIR" ]]; then
+        mkdir -p "$SSH_KEY_DIR"
+        chmod 700 "$SSH_KEY_DIR"
+        log_info "Created SSH directory: $SSH_KEY_DIR"
     fi
     
     log_info "Prerequisites validated successfully"
+}
+
+# Generate SSH key pair if it doesn't exist
+setup_ssh_key() {
+    log_info "Checking SSH key configuration..."
+    
+    if [[ -f "$SSH_KEY_FILE" ]]; then
+        log_info "SSH key already exists: $SSH_KEY_FILE"
+        
+        # Verify key file permissions
+        local key_perms
+        key_perms=$(stat -c %a "$SSH_KEY_FILE" 2>/dev/null || stat -f %Lp "$SSH_KEY_FILE" 2>/dev/null)
+        if [[ "$key_perms" != "600" && "$key_perms" != "400" ]]; then
+            log_warn "Fixing SSH key permissions (was: $key_perms)"
+            chmod 600 "$SSH_KEY_FILE"
+        fi
+    else
+        log_info "SSH key not found. Generating new key pair..."
+        
+        # Generate new SSH key pair
+        if ssh-keygen -t "$SSH_KEY_TYPE" -b "$SSH_KEY_BITS" -f "$SSH_KEY_FILE" -N "" -C "file_transfer@$(hostname)"; then
+            chmod 600 "$SSH_KEY_FILE"
+            chmod 644 "${SSH_KEY_FILE}.pub"
+            log_info "SSH key pair generated successfully"
+        else
+            error_exit "Failed to generate SSH key pair" 4
+        fi
+    fi
+    
+    # Display public key for user to copy to server
+    echo ""
+    echo "========================================"
+    echo "  SSH Public Key Setup Required"
+    echo "========================================"
+    echo ""
+    echo "Copy the following public key to the SFTP server:"
+    echo "Server: ${SFTP_USER}@${SFTP_HOST}"
+    echo "Add to: ~/.ssh/authorized_keys"
+    echo ""
+    echo "--- PUBLIC KEY (copy everything below) ---"
+    cat "${SSH_KEY_FILE}.pub"
+    echo "--- END PUBLIC KEY ---"
+    echo ""
+    echo "You can also use ssh-copy-id:"
+    echo "  ssh-copy-id -i ${SSH_KEY_FILE}.pub -p ${SFTP_PORT} ${SFTP_USER}@${SFTP_HOST}"
+    echo ""
+    
+    # Ask user to confirm key has been added
+    if [[ -t 0 ]]; then
+        read -r -p "Press Enter once the public key has been added to the server (or 'q' to quit): " response
+        if [[ "$response" == "q" || "$response" == "Q" ]]; then
+            log_info "User cancelled - please add the public key to the server and run again"
+            exit 0
+        fi
+    fi
+    
+    # Test SSH connection
+    log_info "Testing SSH connection..."
+    if ssh -i "$SSH_KEY_FILE" -p "$SFTP_PORT" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${SFTP_USER}@${SFTP_HOST}" "echo 'Connection successful'" 2>/dev/null; then
+        log_info "SSH connection test successful"
+    else
+        log_warn "SSH connection test failed - the public key may not be installed on the server yet"
+        log_warn "Continuing anyway - transfers may fail if key is not configured"
+    fi
 }
 
 # Scan directory for new files
@@ -215,9 +278,9 @@ put ${archive_file}
 bye
 EOF
     
-    # Attempt transfer with retries
+    # Attempt transfer with retries using SSH key authentication
     while [[ $retry_count -lt $max_retries ]]; do
-        if sftp -i "$SFTP_KEY_FILE" \
+        if sftp -i "$SSH_KEY_FILE" \
                 -P "$SFTP_PORT" \
                 -o StrictHostKeyChecking=accept-new \
                 -o BatchMode=yes \
@@ -376,6 +439,11 @@ main() {
     
     # Validate prerequisites
     validate_prerequisites
+    
+    # Setup SSH key authentication
+    if [[ "$dry_run" != true ]]; then
+        setup_ssh_key
+    fi
     
     # Rotate old logs
     rotate_logs
