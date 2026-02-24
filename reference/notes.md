@@ -21,12 +21,18 @@ A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 | DeIdentification | poornima.dhanasekaran@gainwelltechnologies.com |
 
 ## Notes
+
+### Server Access
+- CTODCLNORA004
+  - oracle
+  - ora1020g
+
 ### SFTP
 - MOVEit does not like .gz, needs to be .tar.gz
 
 ### MOVEit
 - To do automation need service user. SSH key tied to Gainwell login. Can't add Linux SSH Key in MOVEit per security 
-- mft.gainwelltechnologies.com - **54.80.94.146**
+- [mft.gainwelltechnologies.com](mft.gainwelltechnologies.com) - **54.80.94.146**
    - Use Gainwell ID (gt114477)
 
 ### Scripts
@@ -38,3 +44,8 @@ A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 - [x] Create scripts for copy
 - [x] Create script for SFTP push
 - [ ] Check on incremental refresh process 
+
+## Issues
+### Extract Script
+
+### Linx
