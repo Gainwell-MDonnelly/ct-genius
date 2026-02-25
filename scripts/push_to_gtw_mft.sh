@@ -223,8 +223,19 @@ else
 fi
 
 # --- Post-upload cleanup ---
-read -p "Delete source file(s) after successful upload? [y/N]: " DELETE_CONFIRM
-if [[ "$DELETE_CONFIRM" =~ ^[Yy]$ ]]; then
+PROCESSED_DIR="/delphix/DeIdentified/processed"
+
+echo ""
+echo "What would you like to do with the source file(s)?"
+echo "  1) Keep (no action)"
+echo "  2) Delete"
+echo "  3) Move to $PROCESSED_DIR"
+read -p "Choice [1/2/3]: " CLEANUP_ACTION
+
+CLEANUP_ACTION=${CLEANUP_ACTION:-1}   # default to keep
+
+if [ "$CLEANUP_ACTION" = "2" ]; then
+    # ---- Delete source files ----
     if [ "$MULTI_FILE" = true ]; then
         DELETED=0
         FAILED=0
@@ -238,7 +249,7 @@ if [[ "$DELETE_CONFIRM" =~ ^[Yy]$ ]]; then
             fi
         done
         echo "$DELETED file(s) deleted, $FAILED failed."
-        log_message "INFO" "Post-upload cleanup: $DELETED deleted, $FAILED failed"
+        log_message "INFO" "Post-upload cleanup (delete): $DELETED deleted, $FAILED failed"
     else
         if rm -f "$FILE_PATH" 2>/dev/null; then
             echo "Source file '$FILENAME' deleted."
@@ -248,8 +259,48 @@ if [[ "$DELETE_CONFIRM" =~ ^[Yy]$ ]]; then
             log_message "ERROR" "Failed to delete source file: $FILE_PATH"
         fi
     fi
+
+elif [ "$CLEANUP_ACTION" = "3" ]; then
+    # ---- Move source files to processed folder ----
+    if [ ! -d "$PROCESSED_DIR" ]; then
+        mkdir -p "$PROCESSED_DIR" 2>/dev/null
+        if [ $? -ne 0 ]; then
+            echo "Error: Could not create directory '$PROCESSED_DIR'."
+            log_message "ERROR" "Failed to create processed directory: $PROCESSED_DIR"
+            echo "Source file(s) retained in original location."
+            log_message "INFO" "Source file(s) retained (processed dir creation failed)."
+        fi
+    fi
+
+    if [ -d "$PROCESSED_DIR" ]; then
+        if [ "$MULTI_FILE" = true ]; then
+            MOVED=0
+            FAILED=0
+            for f in "${MATCHED_FILES[@]}"; do
+                if mv "$f" "$PROCESSED_DIR/" 2>/dev/null; then
+                    log_message "INFO" "Moved source file to processed: $f -> $PROCESSED_DIR/$(basename "$f")"
+                    ((MOVED++))
+                else
+                    log_message "ERROR" "Failed to move source file: $f"
+                    ((FAILED++))
+                fi
+            done
+            echo "$MOVED file(s) moved to $PROCESSED_DIR, $FAILED failed."
+            log_message "INFO" "Post-upload cleanup (move): $MOVED moved, $FAILED failed"
+        else
+            if mv "$FILE_PATH" "$PROCESSED_DIR/" 2>/dev/null; then
+                echo "Source file '$FILENAME' moved to $PROCESSED_DIR/"
+                log_message "INFO" "Moved source file: $FILE_PATH -> $PROCESSED_DIR/$FILENAME"
+            else
+                echo "Warning: Could not move '$FILE_PATH' to $PROCESSED_DIR/"
+                log_message "ERROR" "Failed to move source file: $FILE_PATH -> $PROCESSED_DIR/"
+            fi
+        fi
+    fi
+
 else
-    log_message "INFO" "Source file(s) retained (user opted not to delete)."
+    echo "Source file(s) retained."
+    log_message "INFO" "Source file(s) retained (user opted to keep)."
 fi
 
 echo ""

@@ -1,0 +1,8 @@
+[2026-02-25 08:03:54] [INFO] === Starting SFTP Transfer Session ===
+[2026-02-25 08:03:54] [INFO] Server: 54.80.94.146 | Destination: /genius/ctedw/stg/inbound/
+[2026-02-25 08:04:00] [INFO] User: gt114477
+[2026-02-25 08:11:10] [INFO] Wildcard upload: pattern='/delphix/DeIdentified/dev/logs/*.log' matched=2 files, total=1080 bytes
+[2026-02-25 08:11:18] [SUCCESS] 2 file(s) matching '/delphix/DeIdentified/dev/logs/*.log' uploaded successfully to /genius/ctedw/stg/inbound/
+[2026-02-25 08:11:18] [SUCCESS]   Uploaded: sftp_transfer_20260224.log
+[2026-02-25 08:11:18] [SUCCESS]   Uploaded: sftp_transfer_20260225.log
+[2026-02-25 08:11:18] [INFO] === SFTP Transfer Session Completed ===
