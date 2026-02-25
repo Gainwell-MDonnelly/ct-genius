@@ -222,9 +222,36 @@ else
     exit 1
 fi
 
+# --- Post-upload cleanup ---
+read -p "Delete source file(s) after successful upload? [y/N]: " DELETE_CONFIRM
+if [[ "$DELETE_CONFIRM" =~ ^[Yy]$ ]]; then
+    if [ "$MULTI_FILE" = true ]; then
+        DELETED=0
+        FAILED=0
+        for f in "${MATCHED_FILES[@]}"; do
+            if rm -f "$f" 2>/dev/null; then
+                log_message "INFO" "Deleted source file: $f"
+                ((DELETED++))
+            else
+                log_message "ERROR" "Failed to delete source file: $f"
+                ((FAILED++))
+            fi
+        done
+        echo "$DELETED file(s) deleted, $FAILED failed."
+        log_message "INFO" "Post-upload cleanup: $DELETED deleted, $FAILED failed"
+    else
+        if rm -f "$FILE_PATH" 2>/dev/null; then
+            echo "Source file '$FILENAME' deleted."
+            log_message "INFO" "Deleted source file: $FILE_PATH"
+        else
+            echo "Warning: Could not delete '$FILE_PATH'."
+            log_message "ERROR" "Failed to delete source file: $FILE_PATH"
+        fi
+    fi
+else
+    log_message "INFO" "Source file(s) retained (user opted not to delete)."
+fi
+
 echo ""
 echo "Transfer complete."
 log_message "INFO" "=== SFTP Transfer Session Completed ==="
-
-
-# TODO: Delete after successful upload
