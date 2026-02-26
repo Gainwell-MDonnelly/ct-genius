@@ -372,4 +372,5 @@ echo ""
 echo "Transfer complete."
 log_message "INFO" "=== SFTP Transfer Session Completed ==="
 
-#TODO: Add compression for wildcard mode 
+
+#TODO: Add batching of files for upload if too many files are matched
