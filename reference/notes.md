@@ -8,8 +8,18 @@ flowchart LR
   D[SQL Extract] --> E[Copy to Utility ctxodclnutil001]
   E[Copy to Utility ctxodclnutil001] --> F[SFTP MOVEit]
 ```
+## Data
+```mermaid
+flowchart TD
+A[MMIS db - Data Pump] --> B[Redact db]
+B[Redact db] --> C[PHI]
+B[Redact db] --> D[Deidentified]
+D[Deidentified] --> E[SQL* Spool data extracts]
+E[SQL* Spool data extracts] --> F[Tar zipped files]
+```
 ## Infra
 ```mermaid
+
 flowchart LR
 A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 ```
@@ -20,6 +30,7 @@ A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 | Genius | chandrakanth.motlakunta@gainwelltechnologies.com |
 | Genius | dhananjay.godbole@gainwelltechnologies.com |
 | DeIdentification | poornima.dhanasekaran@gainwelltechnologies.com |
+| CT dba | hanh.nguyen@gainwelltechnologies.com |
 
 ## Notes
 

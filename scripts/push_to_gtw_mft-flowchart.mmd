@@ -1,0 +1,42 @@
+%% push_to_gtw_mft.sh — Executive Summary
+%% Script: scripts/push_to_gtw_mft.sh
+%% Updated: 2026-02-25
+
+---
+title: SFTP File Transfer Script
+---
+flowchart TD
+    A([Start]) --> B["Enter SFTP Credentials"]
+    B --> C{"Select Upload Mode"}
+
+    C -->|Single File| D["Select File"]
+    C -->|Wildcard| E["Select Directory +\nFile Type Extension"]
+    E --> F["Review Matched Files"]
+    F --> G{Confirm?}
+    G -->|No| X1([Cancelled])
+
+    D --> H
+    G -->|Yes| H
+
+    H["SFTP Upload to\nMOVEit Gateway"] --> I{Upload\nSuccessful?}
+    I -->|No| X2([Failed — Exit])
+
+    I -->|Yes| J{"Post-Upload\nCleanup?"}
+    J -->|Keep| K["Retain Source Files"]
+    J -->|Delete| L["Delete Source Files"]
+    J -->|Move| M["Move to\n/processed"]
+
+    K --> N([Done])
+    L --> N
+    M --> N
+
+    classDef startEnd fill:#e2e3e5,stroke:#6c757d,color:#000
+    classDef action fill:#cce5ff,stroke:#004085,color:#000
+    classDef decision fill:#fff3cd,stroke:#856404,color:#000
+    classDef fail fill:#f8d7da,stroke:#dc3545,color:#000
+    classDef success fill:#d4edda,stroke:#28a745,color:#000
+
+    class A,N startEnd
+    class B,D,E,F,H,K,L,M action
+    class C,G,I,J decision
+    class X1,X2 fail

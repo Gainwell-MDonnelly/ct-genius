@@ -113,7 +113,22 @@ if [ "$UPLOAD_MODE" = "2" ]; then
     echo "Uploading ${#MATCHED_FILES[@]} file(s) to $SFTP_HOST:$DEST_DIR ..."
 else
     # ---- Single-file mode ----
-    read -p "Enter the full path to the file to upload: " FILE_PATH
+    read -p "Enter the source directory: " SRC_DIR
+    SRC_DIR="${SRC_DIR%/}"
+    if [ ! -d "$SRC_DIR" ]; then
+        log_message "ERROR" "Directory '$SRC_DIR' does not exist. Aborting."
+        echo "Error: Directory '$SRC_DIR' does not exist."
+        exit 1
+    fi
+
+    # List files in the directory for reference
+    echo ""
+    echo "Files in $SRC_DIR:"
+    ls -lh "$SRC_DIR" | tail -n +2
+    echo ""
+
+    read -p "Enter the filename to upload: " FILENAME_INPUT
+    FILE_PATH="$SRC_DIR/$FILENAME_INPUT"
 
     if [ ! -f "$FILE_PATH" ]; then
         log_message "ERROR" "File '$FILE_PATH' does not exist. Aborting."
@@ -125,6 +140,31 @@ else
     FILESIZE=$(stat -c%s "$FILE_PATH" 2>/dev/null || stat -f%z "$FILE_PATH" 2>/dev/null || echo "unknown")
 
     log_message "INFO" "File to upload: $FILE_PATH (Size: $FILESIZE bytes)"
+
+    # --- Compress to .tar.gz before upload ---
+    # Strip .dat extension if present, then append .tar.gz
+    BASE_NAME="${FILENAME%.dat}"
+    TAR_GZ_NAME="${BASE_NAME}.tar.gz"
+    TAR_GZ_PATH="$SRC_DIR/$TAR_GZ_NAME"
+
+    echo ""
+    echo "Compressing '$FILENAME' -> '$TAR_GZ_NAME' ..."
+    log_message "INFO" "Compressing: $FILE_PATH -> $TAR_GZ_PATH"
+
+    tar -czf "$TAR_GZ_PATH" -C "$SRC_DIR" "$FILENAME"
+    if [ $? -ne 0 ]; then
+        log_message "ERROR" "Failed to compress '$FILENAME'. Aborting."
+        echo "Error: Compression failed."
+        exit 1
+    fi
+
+    TAR_GZ_SIZE=$(stat -c%s "$TAR_GZ_PATH" 2>/dev/null || stat -f%z "$TAR_GZ_PATH" 2>/dev/null || echo "unknown")
+    log_message "INFO" "Compressed: $TAR_GZ_NAME (Size: $TAR_GZ_SIZE bytes)"
+    echo "Compressed '$TAR_GZ_NAME' ($TAR_GZ_SIZE bytes)"
+
+    # Upload the .tar.gz instead of the original
+    FILE_PATH="$TAR_GZ_PATH"
+    FILENAME="$TAR_GZ_NAME"
 
     echo ""
     echo "Uploading '$FILENAME' to $SFTP_HOST:$DEST_DIR ..."
