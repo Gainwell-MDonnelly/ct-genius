@@ -110,7 +110,32 @@ if [ "$UPLOAD_MODE" = "2" ]; then
     MULTI_FILE=true
     log_message "INFO" "Wildcard upload: pattern='$GLOB_PATTERN' matched=${#MATCHED_FILES[@]} files, total=$TOTAL_SIZE bytes"
 
-    echo "Uploading ${#MATCHED_FILES[@]} file(s) to $SFTP_HOST:$DEST_DIR ..."
+    # --- Compress matched files to .gz before upload ---
+    echo ""
+    echo "Compressing ${#MATCHED_FILES[@]} file(s) to .gz ..."
+    GZ_FILES=()
+    for f in "${MATCHED_FILES[@]}"; do
+        fname=$(basename "$f")
+        base="${fname%.dat}"
+        gz_path="$SRC_DIR/${base}.gz"
+        gzip -c "$f" > "$gz_path"
+        if [ $? -ne 0 ]; then
+            log_message "ERROR" "Failed to compress '$f'. Aborting."
+            echo "Error: Compression failed for '$fname'."
+            exit 1
+        fi
+        gz_sz=$(stat -c%s "$gz_path" 2>/dev/null || stat -f%z "$gz_path" 2>/dev/null || echo "unknown")
+        log_message "INFO" "Compressed: $fname -> ${base}.gz ($gz_sz bytes)"
+        echo "  $fname -> ${base}.gz ($gz_sz bytes)"
+        GZ_FILES+=("$gz_path")
+    done
+
+    # Update references to point at .gz files for upload
+    MATCHED_FILES=("${GZ_FILES[@]}")
+    GLOB_PATTERN="$SRC_DIR/*.gz"
+    log_message "INFO" "Compression complete. ${#MATCHED_FILES[@]} .gz file(s) ready for upload."
+
+    echo "Uploading ${#MATCHED_FILES[@]} .gz file(s) to $SFTP_HOST:$DEST_DIR ..."
 else
     # ---- Single-file mode ----
     read -p "Enter the source directory: " SRC_DIR
