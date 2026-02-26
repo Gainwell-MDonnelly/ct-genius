@@ -141,30 +141,30 @@ else
 
     log_message "INFO" "File to upload: $FILE_PATH (Size: $FILESIZE bytes)"
 
-    # --- Compress to .tar.gz before upload ---
-    # Strip .dat extension if present, then append .tar.gz
+    # --- Compress to .gz before upload ---
+    # Strip .dat extension if present, then append .gz
     BASE_NAME="${FILENAME%.dat}"
-    TAR_GZ_NAME="${BASE_NAME}.tar.gz"
-    TAR_GZ_PATH="$SRC_DIR/$TAR_GZ_NAME"
+    GZ_NAME="${BASE_NAME}.gz"
+    GZ_PATH="$SRC_DIR/$GZ_NAME"
 
     echo ""
-    echo "Compressing '$FILENAME' -> '$TAR_GZ_NAME' ..."
-    log_message "INFO" "Compressing: $FILE_PATH -> $TAR_GZ_PATH"
+    echo "Compressing '$FILENAME' -> '$GZ_NAME' ..."
+    log_message "INFO" "Compressing: $FILE_PATH -> $GZ_PATH"
 
-    tar -czf "$TAR_GZ_PATH" -C "$SRC_DIR" "$FILENAME"
+    gzip -c "$FILE_PATH" > "$GZ_PATH"
     if [ $? -ne 0 ]; then
         log_message "ERROR" "Failed to compress '$FILENAME'. Aborting."
         echo "Error: Compression failed."
         exit 1
     fi
 
-    TAR_GZ_SIZE=$(stat -c%s "$TAR_GZ_PATH" 2>/dev/null || stat -f%z "$TAR_GZ_PATH" 2>/dev/null || echo "unknown")
-    log_message "INFO" "Compressed: $TAR_GZ_NAME (Size: $TAR_GZ_SIZE bytes)"
-    echo "Compressed '$TAR_GZ_NAME' ($TAR_GZ_SIZE bytes)"
+    GZ_SIZE=$(stat -c%s "$GZ_PATH" 2>/dev/null || stat -f%z "$GZ_PATH" 2>/dev/null || echo "unknown")
+    log_message "INFO" "Compressed: $GZ_NAME (Size: $GZ_SIZE bytes)"
+    echo "Compressed '$GZ_NAME' ($GZ_SIZE bytes)"
 
-    # Upload the .tar.gz instead of the original
-    FILE_PATH="$TAR_GZ_PATH"
-    FILENAME="$TAR_GZ_NAME"
+    # Upload the .gz instead of the original
+    FILE_PATH="$GZ_PATH"
+    FILENAME="$GZ_NAME"
 
     echo ""
     echo "Uploading '$FILENAME' to $SFTP_HOST:$DEST_DIR ..."
@@ -346,3 +346,5 @@ fi
 echo ""
 echo "Transfer complete."
 log_message "INFO" "=== SFTP Transfer Session Completed ==="
+
+#TODO: Add compression for wildcard mode 
