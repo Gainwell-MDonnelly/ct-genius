@@ -43,8 +43,7 @@ A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 
 ## Server Access
 - **CTODCLNORA004 - 10.26.40.175**
-  - oracle
-  - ora1020g
+
 
 ## Delphix
 - Communicates using 1521 to Oracle SQL (default Oracle port)
