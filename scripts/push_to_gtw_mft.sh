@@ -7,14 +7,19 @@
 # SFTP Server Configuration
 SFTP_HOST="54.80.94.146"
 DEST_DIR="/genius/ctedw/stg/inbound/"
+BATCH_SIZE=50   # Max files per SFTP session in wildcard mode
 
 # Logging Configuration
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
-LOG_FILE="$LOG_DIR/sftp_transfer_$(date +%Y%m%d).log"
+LOG_FILE="$LOG_DIR/sftp_transfer_$(date +%Y%m%d_%H%M%S).log"
 
-# Create log directory if it doesn't exist
+# Create log directory — abort if it fails
 mkdir -p "$LOG_DIR"
+if [ ! -d "$LOG_DIR" ]; then
+    echo "Error: Could not create log directory '$LOG_DIR'. Aborting."
+    exit 1
+fi
 
 # Function to write to log
 log_message() {
@@ -196,95 +201,117 @@ else
     log_message "INFO" "Starting upload of '$FILENAME' to $SFTP_HOST:$DEST_DIR"
 fi
 
-# Use sshpass for password-based SFTP (if available)
-if command -v sshpass &> /dev/null; then
-    if [ "$MULTI_FILE" = true ]; then
-        sshpass -p "$SFTP_PASS" sftp -o StrictHostKeyChecking=no "$SFTP_USER@$SFTP_HOST" <<EOF
-cd $DEST_DIR
-mput $GLOB_PATTERN
-bye
-EOF
-    else
-        sshpass -p "$SFTP_PASS" sftp -o StrictHostKeyChecking=no "$SFTP_USER@$SFTP_HOST" <<EOF
-cd $DEST_DIR
-put "$FILE_PATH"
-bye
-EOF
-    fi
-else
-    # Fallback: Use expect if sshpass is not available
-    if command -v expect &> /dev/null; then
-        if [ "$MULTI_FILE" = true ]; then
-            expect <<EOF
-spawn sftp -o StrictHostKeyChecking=no $SFTP_USER@$SFTP_HOST
-expect "password:"
-send "$SFTP_PASS\r"
-expect "sftp>"
-send "cd $DEST_DIR\r"
-expect "sftp>"
-send "mput $GLOB_PATTERN\r"
-expect "sftp>"
-send "bye\r"
-expect eof
-EOF
-        else
-            expect <<EOF
-spawn sftp -o StrictHostKeyChecking=no $SFTP_USER@$SFTP_HOST
-expect "password:"
-send "$SFTP_PASS\r"
-expect "sftp>"
-send "cd $DEST_DIR\r"
-expect "sftp>"
-send "put $FILE_PATH\r"
-expect "sftp>"
-send "bye\r"
-expect eof
-EOF
-        fi
-    else
-        echo ""
-        echo "Note: sshpass or expect not found. Using interactive SFTP."
-        echo "You will be prompted for your password again."
-        echo ""
-        if [ "$MULTI_FILE" = true ]; then
-            sftp -o StrictHostKeyChecking=no "$SFTP_USER@$SFTP_HOST" <<EOF
-cd $DEST_DIR
-mput $GLOB_PATTERN
-bye
-EOF
-        else
-            sftp -o StrictHostKeyChecking=no "$SFTP_USER@$SFTP_HOST" <<EOF
-cd $DEST_DIR
-put "$FILE_PATH"
-bye
-EOF
-        fi
-    fi
-fi
+# =============================================================================
+# SFTP Upload
+# =============================================================================
 
-# Check if upload was successful
-if [ $? -eq 0 ]; then
-    echo ""
-    if [ "$MULTI_FILE" = true ]; then
-        echo "${#MATCHED_FILES[@]} file(s) matching '*.$FILE_EXT' uploaded successfully to $DEST_DIR"
-        log_message "SUCCESS" "${#MATCHED_FILES[@]} file(s) matching '$GLOB_PATTERN' uploaded successfully to $DEST_DIR"
-        for f in "${MATCHED_FILES[@]}"; do
-            log_message "SUCCESS" "  Uploaded: $(basename "$f")"
-        done
+# --- Helper: upload a list of files in a single SFTP session ---
+# Usage: sftp_put_files file1 file2 ...
+sftp_put_files() {
+    local files=("$@")
+    # Build put commands
+    local put_cmds=""
+    for f in "${files[@]}"; do
+        put_cmds+="put \"$f\"
+"
+    done
+
+    if command -v sshpass &> /dev/null; then
+        sshpass -p "$SFTP_PASS" sftp -o StrictHostKeyChecking=no "$SFTP_USER@$SFTP_HOST" <<EOF
+cd $DEST_DIR
+$put_cmds
+bye
+EOF
+    elif command -v expect &> /dev/null; then
+        expect <<EOF
+spawn sftp -o StrictHostKeyChecking=no $SFTP_USER@$SFTP_HOST
+expect "password:"
+send "$SFTP_PASS\r"
+expect "sftp>"
+send "cd $DEST_DIR\r"
+$(for f in "${files[@]}"; do echo "expect \"sftp>\""; echo "send \"put $f\r\""; done)
+expect "sftp>"
+send "bye\r"
+expect eof
+EOF
     else
+        sftp -o StrictHostKeyChecking=no "$SFTP_USER@$SFTP_HOST" <<EOF
+cd $DEST_DIR
+$put_cmds
+bye
+EOF
+    fi
+    return $?
+}
+
+if [ "$MULTI_FILE" = true ]; then
+    # ---- Batched upload for wildcard mode ----
+    TOTAL_FILES=${#MATCHED_FILES[@]}
+    TOTAL_BATCHES=$(( (TOTAL_FILES + BATCH_SIZE - 1) / BATCH_SIZE ))
+    UPLOADED_OK=0
+    UPLOADED_FAIL=0
+
+    log_message "INFO" "Starting batched upload: $TOTAL_FILES files in $TOTAL_BATCHES batch(es) of up to $BATCH_SIZE"
+    echo ""
+    echo "Uploading $TOTAL_FILES file(s) in batches of $BATCH_SIZE ($TOTAL_BATCHES batch(es)) ..."
+    echo ""
+
+    for (( batch=0; batch<TOTAL_BATCHES; batch++ )); do
+        start=$(( batch * BATCH_SIZE ))
+        end=$(( start + BATCH_SIZE ))
+        if [ $end -gt $TOTAL_FILES ]; then
+            end=$TOTAL_FILES
+        fi
+        batch_count=$(( end - start ))
+        batch_num=$(( batch + 1 ))
+
+        BATCH_FILES=("${MATCHED_FILES[@]:$start:$batch_count}")
+
+        echo "--- Batch $batch_num/$TOTAL_BATCHES ($batch_count files) ---"
+        log_message "INFO" "Batch $batch_num/$TOTAL_BATCHES: uploading files $((start+1))-$end of $TOTAL_FILES"
+
+        sftp_put_files "${BATCH_FILES[@]}"
+        BATCH_RC=$?
+
+        if [ $BATCH_RC -eq 0 ]; then
+            UPLOADED_OK=$(( UPLOADED_OK + batch_count ))
+            log_message "SUCCESS" "Batch $batch_num/$TOTAL_BATCHES: $batch_count file(s) uploaded successfully"
+            echo "  Batch $batch_num complete — $batch_count file(s) OK"
+        else
+            UPLOADED_FAIL=$(( UPLOADED_FAIL + batch_count ))
+            log_message "ERROR" "Batch $batch_num/$TOTAL_BATCHES: upload failed"
+            echo "  Batch $batch_num FAILED"
+        fi
+    done
+
+    echo ""
+    echo "Upload summary: $UPLOADED_OK succeeded, $UPLOADED_FAIL failed (out of $TOTAL_FILES)"
+    log_message "INFO" "Upload summary: $UPLOADED_OK succeeded, $UPLOADED_FAIL failed (out of $TOTAL_FILES)"
+
+    if [ $UPLOADED_FAIL -gt 0 ]; then
+        log_message "ERROR" "$UPLOADED_FAIL file(s) failed to upload"
+        if [ $UPLOADED_OK -eq 0 ]; then
+            echo "Error: All uploads failed."
+            exit 1
+        else
+            echo "Warning: Some batches failed. Continuing with cleanup for successfully uploaded files."
+        fi
+    fi
+
+else
+    # ---- Single-file upload ----
+    sftp_put_files "$FILE_PATH"
+
+    if [ $? -eq 0 ]; then
+        echo ""
         echo "File '$FILENAME' uploaded successfully to $DEST_DIR"
         log_message "SUCCESS" "File '$FILENAME' uploaded successfully to $DEST_DIR"
-    fi
-else
-    echo ""
-    if [ "$MULTI_FILE" = true ]; then
-        echo "Error: Wildcard upload failed for pattern '$GLOB_PATTERN'."
-        log_message "ERROR" "Wildcard upload failed for pattern '$GLOB_PATTERN'"
     else
+        echo ""
         echo "Error: File upload failed."
         log_message "ERROR" "File upload failed for '$FILENAME'"
+        exit 1
     fi
-    exit 1
 fi
 
 # --- Post-upload cleanup ---
@@ -371,6 +398,3 @@ fi
 echo ""
 echo "Transfer complete."
 log_message "INFO" "=== SFTP Transfer Session Completed ==="
-
-
-#TODO: Add batching of files for upload if too many files are matched

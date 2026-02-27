@@ -63,7 +63,7 @@ A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 ## Scripts
 **tar - Zips and compress files** `tar -czf AIM_T_RE_DEATH_CHG_0.tar.gz AIM_T_RE_DEATH_CHG_0_test.dat`
 Time to run compression: ~Start: 12:30 EST  Finish: 2026-02-26 13:42:38 (EST)
-Time to push to SFTP: Start: 2026-02-26 13:42:38 EST - 
+Time to push to SFTP: Start: 2026-02-26 13:42:38 EST - 15:30:48 = ~2 hrs
 
 
 ## Issues / Lessons Learned
