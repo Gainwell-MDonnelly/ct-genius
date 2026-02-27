@@ -1,0 +1,87 @@
+---
+title: push_to_gtw_mft.sh — SFTP File Transfer Process
+---
+flowchart TD
+    START([Start]) --> INIT["Initialize Config\nSFTP_HOST = 54.80.94.146\nDEST = /genius/ctedw/stg/inbound/"]
+    INIT --> LOG_INIT["Create log directory\nInit log file"]
+    LOG_INIT --> CRED_PROMPT[/"Enter SFTP Username"/]
+
+    CRED_PROMPT --> CHK_USER{Username\nprovided?}
+    CHK_USER -->|No| ERR_USER([Exit 1: Empty username])
+    CHK_USER -->|Yes| PASS_PROMPT[/"Enter SFTP Password"/]
+
+    PASS_PROMPT --> CHK_PASS{Password\nprovided?}
+    CHK_PASS -->|No| ERR_PASS([Exit 1: Empty password])
+    CHK_PASS -->|Yes| MODE_SELECT
+
+    subgraph MODE_SELECT ["File Selection Mode"]
+        direction TB
+        CHOOSE{Upload mode?}
+        CHOOSE -->|"1 — Single file"| SINGLE_PATH[/"Enter full file path"/]
+        CHOOSE -->|"2 — Wildcard"| WILD_DIR[/"Enter source directory"/]
+
+        SINGLE_PATH --> CHK_FILE{File\nexists?}
+        CHK_FILE -->|No| ERR_FILE([Exit 1: File not found])
+        CHK_FILE -->|Yes| SINGLE_READY["Set FILENAME, FILESIZE\nMULTI_FILE=false"]
+
+        WILD_DIR --> CHK_DIR{Directory\nexists?}
+        CHK_DIR -->|No| ERR_DIR([Exit 1: Dir not found])
+        CHK_DIR -->|Yes| WILD_EXT[/"Enter file extension\ne.g. tar.gz, csv"/]
+        WILD_EXT --> CHK_EXT{Extension\nprovided?}
+        CHK_EXT -->|No| ERR_EXT([Exit 1: Empty extension])
+        CHK_EXT -->|Yes| GLOB["Glob: dir/*.ext"]
+        GLOB --> CHK_MATCH{Files\nmatched?}
+        CHK_MATCH -->|No| ERR_MATCH([Exit 1: No matches])
+        CHK_MATCH -->|Yes| LIST_FILES["List matched files\nwith sizes"]
+        LIST_FILES --> CONFIRM{"Proceed with\nupload? y/N"}
+        CONFIRM -->|No| CANCELLED([Exit 0: Cancelled])
+        CONFIRM -->|Yes| WILD_READY["MULTI_FILE=true"]
+    end
+
+    SINGLE_READY --> SFTP_CONNECT
+    WILD_READY --> SFTP_CONNECT
+
+    subgraph SFTP_CONNECT ["SFTP Upload"]
+        direction TB
+        TOOL_CHK{sshpass\navailable?}
+        TOOL_CHK -->|Yes| SSHPASS["SFTP via sshpass\nput / mput"]
+        TOOL_CHK -->|No| EXPECT_CHK{expect\navailable?}
+        EXPECT_CHK -->|Yes| EXPECT["SFTP via expect\nput / mput"]
+        EXPECT_CHK -->|No| INTERACTIVE["Interactive SFTP\nput / mput"]
+    end
+
+    SSHPASS --> RESULT
+    EXPECT --> RESULT
+    INTERACTIVE --> RESULT
+
+    RESULT{Upload\nsucceeded?}
+    RESULT -->|No| ERR_UPLOAD([Exit 1: Upload failed])
+    RESULT -->|Yes| LOG_SUCCESS["Log success\nfor each file"]
+
+    LOG_SUCCESS --> CLEANUP
+
+    subgraph CLEANUP ["Post-Upload Cleanup"]
+        direction TB
+        ACTION{"What to do with\nsource files? 1/2/3"}
+        ACTION -->|"1 — Keep"| KEEP["Source files retained"]
+        ACTION -->|"2 — Delete"| DELETE["rm -f each file\nLog per file"]
+        ACTION -->|"3 — Move"| MK_DIR["Ensure /delphix/\nDeIdentified/processed/\nexists"]
+        MK_DIR --> CHK_MKDIR{Dir created\nor exists?}
+        CHK_MKDIR -->|No| MOVE_FAIL["Retain files\nLog error"]
+        CHK_MKDIR -->|Yes| MOVE["mv each file\nto processed/\nLog per file"]
+    end
+
+    KEEP --> DONE
+    DELETE --> DONE
+    MOVE_FAIL --> DONE
+    MOVE --> DONE
+
+    DONE(["Transfer complete"])
+
+    classDef errStyle fill:#f8d7da,stroke:#dc3545,color:#000
+    classDef okStyle fill:#d4edda,stroke:#28a745,color:#000
+    classDef ioStyle fill:#fff3cd,stroke:#856404,color:#000
+
+    class ERR_USER,ERR_PASS,ERR_FILE,ERR_DIR,ERR_EXT,ERR_MATCH,ERR_UPLOAD,CANCELLED,MOVE_FAIL errStyle
+    class DONE,LOG_SUCCESS,KEEP,DELETE,MOVE okStyle
+    class CRED_PROMPT,PASS_PROMPT,SINGLE_PATH,WILD_DIR,WILD_EXT,CONFIRM,ACTION ioStyle

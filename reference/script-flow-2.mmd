@@ -1,0 +1,146 @@
+---
+title: push_to_gtw_mft.sh — Script Steps
+---
+flowchart TD
+    L7["L7-9: Set SFTP_HOST, DEST_DIR"]
+    L11["L11-14: Set SCRIPT_DIR, LOG_DIR, LOG_FILE"]
+    L16["L16: mkdir -p LOG_DIR"]
+    L19["L19-25: Define log_message fn"]
+    L27["L27-31: echo banner\n— Server, Destination, Log File"]
+    L33["L33-34: log INFO session start"]
+    L36["L36: read -p SFTP_USER"]
+    L37{"L37: -z SFTP_USER ?"}
+    L44["L44: read -s -p SFTP_PASS"]
+    L46{"L46: -z SFTP_PASS ?"}
+    L53["L53-57: echo upload mode menu"]
+    L58["L58: read -p UPLOAD_MODE"]
+    L60{"L60: UPLOAD_MODE\n= 2 ?"}
+
+    %% Wildcard branch
+    L64["L64: read -p SRC_DIR"]
+    L66{"L66: -d SRC_DIR ?"}
+    L72["L72: read -p FILE_EXT"]
+    L74{"L74: -z FILE_EXT ?"}
+    L79["L79: GLOB = SRC_DIR/*.FILE_EXT"]
+    L80["L80: MATCHED_FILES=( glob )"]
+    L82{"L82: files matched?"}
+    L88["L88-94: for f in MATCHED_FILES\nprint name + stat size"]
+    L97["L97: read -p CONFIRM y/N"]
+    L98{"L98: CONFIRM = y ?"}
+    L105["L105: MULTI_FILE=true\nlog wildcard info"]
+
+    %% Single-file branch
+    L109["L109: read -p FILE_PATH"]
+    L111{"L111: -f FILE_PATH ?"}
+    L116["L116-117: FILENAME=basename\nFILESIZE=stat"]
+
+    %% SFTP tool detection
+    L123{"L123: command -v\nsshpass ?"}
+    L124{"L124: MULTI_FILE ?"}
+    L125["L125-129: sshpass sftp\ncd DEST_DIR\nmput GLOB"]
+    L131["L131-135: sshpass sftp\ncd DEST_DIR\nput FILE_PATH"]
+    L139{"L139: command -v\nexpect ?"}
+    L140{"L140: MULTI_FILE ?"}
+    L141["L141-149: expect spawn sftp\nsend cd + mput + bye"]
+    L151["L151-159: expect spawn sftp\nsend cd + put + bye"]
+    L163["L163-166: echo interactive warning"]
+    L167{"L167: MULTI_FILE ?"}
+    L168["L168-172: sftp heredoc\ncd + mput"]
+    L174["L174-178: sftp heredoc\ncd + put"]
+
+    %% Result check
+    L184{"L184: exit code\n$? = 0 ?"}
+    L186["L186-191: log SUCCESS\nper file"]
+    L199["L199: exit 1\nlog ERROR upload failed"]
+
+    %% Cleanup
+    L203["L203: PROCESSED_DIR=\n/delphix/DeIdentified/processed"]
+    L205["L205-208: echo cleanup menu\n1-Keep  2-Delete  3-Move"]
+    L209["L209: read -p CLEANUP_ACTION"]
+    L211{"L211:\nCLEANUP_ACTION?"}
+    L_KEEP["L302: echo retained\nlog INFO kept"]
+    L_DEL["L213-232: for f: rm -f\nlog per file"]
+    L_MV_DIR{"L235: -d PROCESSED_DIR ?"}
+    L_MKDIR["L236: mkdir -p PROCESSED_DIR"]
+    L_MKDIR_CHK{"L237: mkdir ok?"}
+    L_MKDIR_FAIL["L238-240: echo + log error\nretain files"]
+    L_MV["L245-268: for f: mv to processed/\nlog per file"]
+
+    L305["L305-306: echo Transfer complete\nlog INFO session end"]
+    EXIT_ERR(["exit 1"])
+    EXIT_OK(["exit 0"])
+
+    %% Flow
+    L7 --> L11 --> L16 --> L19 --> L27 --> L33 --> L36
+    L36 --> L37
+    L37 -->|empty| EXIT_ERR
+    L37 -->|ok| L44
+    L44 --> L46
+    L46 -->|empty| EXIT_ERR
+    L46 -->|ok| L53 --> L58 --> L60
+
+    L60 -->|"2 — Wildcard"| L64
+    L64 --> L66
+    L66 -->|no| EXIT_ERR
+    L66 -->|yes| L72 --> L74
+    L74 -->|empty| EXIT_ERR
+    L74 -->|ok| L79 --> L80 --> L82
+    L82 -->|none| EXIT_ERR
+    L82 -->|yes| L88 --> L97 --> L98
+    L98 -->|no| EXIT_OK
+    L98 -->|yes| L105
+
+    L60 -->|"1 — Single file"| L109
+    L109 --> L111
+    L111 -->|no| EXIT_ERR
+    L111 -->|yes| L116
+
+    L105 --> L123
+    L116 --> L123
+
+    L123 -->|yes| L124
+    L124 -->|multi| L125
+    L124 -->|single| L131
+    L123 -->|no| L139
+    L139 -->|yes| L140
+    L140 -->|multi| L141
+    L140 -->|single| L151
+    L139 -->|no| L163 --> L167
+    L167 -->|multi| L168
+    L167 -->|single| L174
+
+    L125 --> L184
+    L131 --> L184
+    L141 --> L184
+    L151 --> L184
+    L168 --> L184
+    L174 --> L184
+
+    L184 -->|"!= 0"| L199
+    L199 --> EXIT_ERR
+    L184 -->|"= 0"| L186
+
+    L186 --> L203 --> L205 --> L209 --> L211
+    L211 -->|"1-Keep"| L_KEEP
+    L211 -->|"2-Delete"| L_DEL
+    L211 -->|"3-Move"| L_MV_DIR
+    L_MV_DIR -->|exists| L_MV
+    L_MV_DIR -->|no| L_MKDIR --> L_MKDIR_CHK
+    L_MKDIR_CHK -->|fail| L_MKDIR_FAIL
+    L_MKDIR_CHK -->|ok| L_MV
+
+    L_KEEP --> L305
+    L_DEL --> L305
+    L_MV --> L305
+    L_MKDIR_FAIL --> L305
+    L305 --> EXIT_OK
+
+    classDef errNode fill:#f8d7da,stroke:#dc3545,color:#000
+    classDef okNode fill:#d4edda,stroke:#28a745,color:#000
+    classDef readNode fill:#fff3cd,stroke:#856404,color:#000
+    classDef cmdNode fill:#cce5ff,stroke:#004085,color:#000
+
+    class EXIT_ERR,L199,L_MKDIR_FAIL errNode
+    class EXIT_OK,L186,L_KEEP,L_DEL,L_MV,L305 okNode
+    class L36,L44,L58,L64,L72,L97,L109,L209 readNode
+    class L125,L131,L141,L151,L168,L174,L_MKDIR cmdNode
