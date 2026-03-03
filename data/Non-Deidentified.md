@@ -1,0 +1,137 @@
+# Non-Deidentified Tables
+
+This document lists the database tables that contain non-deidentified data, organized by schema.
+
+## Summary
+
+| Schema | Table Count |
+|--------|-------------|
+| AIM    | 66          |
+| AIM00  | 18          |
+| AIM01  | 22          |
+| **Total** | **106**  |
+
+---
+
+## AIM Schema Tables
+
+| Table Name | Row Count |
+|------------|-----------|
+| T_CDE_AID | 160 |
+| T_CDE_COS_VALUES | 743 |
+| T_CDE_PHONE | 9 |
+| T_CDE_RACE | 8 |
+| T_CLAIM_TYPE | 12 |
+| T_COUNTRY | 3 |
+| T_DIAG_TYPE | 286 |
+| T_DIAGNOSIS | 116,902 |
+| T_DRUG | 456,670 |
+| T_DRUG_GROUP | 2,994 |
+| T_DRUG_MANUF | 5,358 |
+| T_DRUG_TYPE | 21 |
+| T_EOB_ADJRSN_XREF | 931 |
+| T_EOB_REMRKS_XREF | 486 |
+| T_ERROR_DISP | 1,991 |
+| T_FIN_FUND_CODE | 261 |
+| T_GCN_SEQNO_GROUP | 2,127 |
+| T_GCN_SEQNO_TYPE | 35 |
+| T_HIST_DIRECTORY | 212,981,955 |
+| T_LANGUAGE | 394 |
+| T_MODIFIER | 493 |
+| T_PA_ASSIGN_CODE | 47 |
+| T_PA_ITEM_DTL_XREF | 68,833,111 |
+| T_PA_LINE_ITEM | 24,571,136 |
+| T_PA_MEDIA | 12 |
+| T_PA_PAUTH | 17,584,099 |
+| T_PDL_MASTER | 698,799 |
+| T_PR_CERT_CODE | 37 |
+| T_PR_CLIA_STAT | 40,949 |
+| T_PR_DEA | 0 |
+| T_PR_ENROLL_PGM | 73 |
+| T_PR_ENROLL_STATUS | 25 |
+| T_PR_GRP_MBR | 241,378 |
+| T_PR_IDENTIFIER | 542,717 |
+| T_PR_LOC_NM_ADR | 1,031,292 |
+| T_PR_LOC_RATE | 27,533 |
+| T_PR_OWNER | 61,924 |
+| T_PR_PHP_ELIG | 1,754,266 |
+| T_PR_PROV | 187,924 |
+| T_PR_SPEC | 230,575 |
+| T_PR_SPEC_CDE | 356 |
+| T_PR_SVC_CERT | 66,137 |
+| T_PR_SVC_LANG | 159,417 |
+| T_PR_TAXONOMY_CDE | 813 |
+| T_PR_TYPE | 199,954 |
+| T_PR_TYPE_CDE | 71 |
+| T_PROC | 28,775 |
+| T_PROC_GROUP | 94,797 |
+| T_PROC_ICD | 88,260 |
+| T_PROC_ICD_GROUP | 1,363 |
+| T_PROC_ICD_TYPE | 17 |
+| T_PROC_TYPE | 1,022 |
+| T_RE_AID_ELIG | 93,051,815 |
+| T_RE_ASSIGN_PLAN | 40,804,587 |
+| T_RE_ASSIGN_REASON | 18 |
+| T_RE_ASSIGN_RSN_CODE | 20 |
+
+---
+
+## AIM00 Schema Tables
+
+| Table Name | Row Count |
+|------------|-----------|
+| T_ATTACHMENT_XREF | 51,221 |
+| T_CLAIM_ERROR | 2,861,087 |
+| T_CLAIM_LOCAT | 5,073,724 |
+| T_CLM_DIAG_XREF | 2,675,685 |
+| T_CLM_DTL_TTH_SFC | 45,477 |
+| T_CLM_ENC_DTL | 0 |
+| T_CLM_EOB_XREF | 10,305,990 |
+| T_CLM_MODIFIER | 213,008 |
+| T_CLM_OTH_PYR_DTL | 486,554 |
+| T_CLM_PGM_XREF | 5,611,093 |
+| T_CLM_PWK | 1,344 |
+| T_DENTAL_DTL_KEYS | 174,155 |
+| T_DENY_DNTL_DTL | 19,478 |
+| T_DENY_PHRM_DTL | 574,648 |
+| T_DENY_PHRM_HDR | 571,512 |
+| T_DENY_PHYS_DTL | 449,697 |
+| T_EDI_INTERCHANGE | 91,987,349 |
+| T_FINAL_PHYS_XOVER | 240,159 |
+| T_FINAL_UB92_XOVER | 307,389 |
+| T_MPHX_DENTAL_DTL | 10,630,210 |
+| T_PD_DNTL_DTL | 154,643 |
+| T_PD_PHARM_DTL | 586,703 |
+| T_PD_PHYS_DTL | 2,415,301 |
+| T_PD_UB92_DTL | 839,905 |
+| T_PHYS_DEXT_KEY | 2,865,819 |
+
+---
+
+## AIM01 Schema Tables
+
+| Table Name | Row Count |
+|------------|-----------|
+| T_ADJ_DENT_XREF | 259,452 |
+| T_ADJ_PHRM_XREF | 13,789,981 |
+| T_ADJ_PHYS_XREF | 4,886,062 |
+| T_ADJ_UB92_XREF | 1,380,887 |
+| T_CLAIM_LOCAT | 634,317,705 |
+| T_CLM_DIAG_XREF | 213,643,994 |
+| T_CLM_DTL_TTH_SFC | 3,653,597 |
+| T_CLM_ENC_DTL | 1 |
+| T_CLM_EOB_XREF | 886,619,911 |
+| T_CLM_MODIFIER | 17,221,175 |
+| T_CLM_OTH_PYR_DTL | 40,027,318 |
+| T_CLM_PGM_XREF | 491,157,947 |
+| T_CLM_PWK | 118,733 |
+| T_COS_DTL_XREF | 556,534,621 |
+| T_DENTAL_DTL_KEYS | 13,863,827 |
+| T_DENY_DNTL_DTL | 1,866,383 |
+| T_DENY_PHRM_DTL | 44,690,730 |
+| T_DENY_PHRM_HDR | 44,439,653 |
+| T_DENY_PHYS_DTL | 39,480,277 |
+| T_DENY_UB92_DTL | 15,500,249 |
+| T_EDI_INTERCHANGE | 0 |
+| T_FINAL_PHYS_XOVER | 21,539,820 |
+| T_FINAL_UB92_XOVER | 26,844,258 |
