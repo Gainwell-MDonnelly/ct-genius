@@ -25,7 +25,8 @@ flowchart LR
   A[Start] --> B[Database Refresh]
   B[PROD to Delphix db import] --> C[Deidentification]
   C[Deidentification] --> D[SQL Extract]
-  D[SQL Extract] --> E[Copy to Utility ctxodclnutil001]
+  D[SQL Extract] --> S[Data Cleanup]
+  S[Data Cleanup] --> E[Copy to Utility ctxodclnutil001]
   E[Copy to Utility ctxodclnutil001] --> F[SFTP MOVEit]
 ```
 ## Data
