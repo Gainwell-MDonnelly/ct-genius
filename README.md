@@ -71,7 +71,7 @@ A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 
 ## MOVEit
 - To do automation need service user. SSH key tied to Gainwell login. Can't add Linux SSH Key in MOVEit per security 
-- [mft.gainwelltechnologies.com](mft.gainwelltechnologies.com) - **54.80.94.146**
+- [mft.gainwelltechnologies.com](mft.gainwelltechnologies.com) - **54.80.94.146** or **34.227.189.138**
    - Use Gainwell ID (gt114477)
 - Job picks up from /inbound/ folder regularly. Any files not picked up are likely bad
 - SFTP on Ports 1521
@@ -80,10 +80,20 @@ A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 
 
 ## Scripts
-**tar - Zips and compress files** `tar -czf AIM_T_RE_DEATH_CHG_0.tar.gz AIM_T_RE_DEATH_CHG_0_test.dat`
+<!-- **tar - Zips and compress files** `tar -czf AIM_T_RE_DEATH_CHG_0.tar.gz AIM_T_RE_DEATH_CHG_0_test.dat`
 Time to run compression: ~Start: 12:30 EST  Finish: 2026-02-26 13:42:38 (EST)
 Time to push to SFTP: Start: 2026-02-26 13:42:38 EST - 15:30:48 = ~2 hrs
+ -->
 
+### GZip all .dat files
+`for f in /delphix/DeIdentified/*.dat; do
+  [ -e "$f" ] || continue
+  gzip -c -- "$f" > "${f%.dat}.gz"
+done
+`
+
+### Count of all files in a directory 
+`find . -maxdepth 1 -type f -name "*.dat" | wc -l`
 
 ## Issues / Lessons Learned
 - Genius prefers .gz over .tar.gz (tar requires pre-code on Genius side). GZ built out of the box
