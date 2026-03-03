@@ -8,6 +8,7 @@
 SFTP_HOST="54.80.94.146"
 PROD_DEST_DIR="/genius/ctedw/stg/inbound/"
 BATCH_SIZE=50   # Max files per SFTP session in wildcard mode
+MAX_FILES=100   # Max files to select in wildcard mode (sorted by name desc)
 
 # Logging Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -120,8 +121,18 @@ if [ "$UPLOAD_MODE" = "2" ]; then
         exit 1
     fi
 
+    # Sort by filename descending and limit to first MAX_FILES
+    ALL_COUNT=${#MATCHED_FILES[@]}
+    readarray -t MATCHED_FILES < <(printf '%s\n' "${MATCHED_FILES[@]}" | sort -t/ -k$(echo "${MATCHED_FILES[0]}" | tr '/' '\n' | wc -l) -r | head -n "$MAX_FILES")
+
+    if [ $ALL_COUNT -gt $MAX_FILES ]; then
+        echo ""
+        echo "Found $ALL_COUNT file(s) matching pattern — limiting to first $MAX_FILES (sorted by filename desc)."
+        log_message "INFO" "Found $ALL_COUNT matching files, limited to $MAX_FILES (filename desc)"
+    fi
+
     echo ""
-    echo "Matched ${#MATCHED_FILES[@]} file(s):"
+    echo "Selected ${#MATCHED_FILES[@]} file(s) (sorted by filename desc):"
     TOTAL_SIZE=0
     for f in "${MATCHED_FILES[@]}"; do
         sz=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f" 2>/dev/null || echo 0)
