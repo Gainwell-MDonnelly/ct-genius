@@ -108,7 +108,7 @@ done
 ## Tasks
 - [x] Create scripts for copy
 - [x] Create script for SFTP push
-- [ ] Check on incremental refresh process 
-- [ ] Get sizing of data on db server and on utility server
-- [] Batching of ~files?
-- [] Prompt for directory (hardcode /delphix/de-identified/)
+- [] Check on incremental refresh process 
+- [x] Get sizing of data on db server and on utility server
+- [x] Batching of ~files?
+- [x] Prompt for directory (hardcode /delphix/de-identified/)
