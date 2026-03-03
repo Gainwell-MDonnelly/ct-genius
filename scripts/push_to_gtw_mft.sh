@@ -6,12 +6,12 @@
 
 # SFTP Server Configuration
 SFTP_HOST="54.80.94.146"
-DEST_DIR="/genius/ctedw/stg/inbound/"
+PROD_DEST_DIR="/genius/ctedw/stg/inbound/"
 BATCH_SIZE=50   # Max files per SFTP session in wildcard mode
 
 # Logging Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/logs"
+LOG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/logs"
 LOG_FILE="$LOG_DIR/sftp_transfer_$(date +%Y%m%d_%H%M%S).log"
 
 # Create log directory — abort if it fails
@@ -29,7 +29,33 @@ log_message() {
     echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
 }
 
+# --- Environment Selection ---
+echo "Select environment:"
+echo "  1) Dev"
+echo "  2) Prod"
+read -p "Choice [1/2]: " ENV_CHOICE
+
+if [ "$ENV_CHOICE" = "2" ]; then
+    DEST_DIR="$PROD_DEST_DIR"
+    log_message "INFO" "Environment: PROD | Destination: $DEST_DIR"
+elif [ "$ENV_CHOICE" = "1" ]; then
+    read -p "Enter destination directory: " DEST_DIR
+    if [ -z "$DEST_DIR" ]; then
+        log_message "ERROR" "Destination directory cannot be empty. Aborting."
+        echo "Error: Destination directory cannot be empty."
+        exit 1
+    fi
+    # Ensure trailing slash
+    DEST_DIR="${DEST_DIR%/}/"
+    log_message "INFO" "Environment: DEV | Destination: $DEST_DIR"
+else
+    echo "Error: Invalid choice. Please enter 1 or 2."
+    log_message "ERROR" "Invalid environment choice: '$ENV_CHOICE'. Aborting."
+    exit 1
+fi
+
 # Prompt for SFTP credentials
+echo ""
 echo "=== SFTP File Transfer ==="
 echo "Server: $SFTP_HOST"
 echo "Destination: $DEST_DIR"
@@ -113,10 +139,34 @@ if [ "$UPLOAD_MODE" = "2" ]; then
     fi
 
     MULTI_FILE=true
-    ORIGINAL_FILES=("${MATCHED_FILES[@]}")  # Keep original .dat files for cleanup
     log_message "INFO" "Wildcard upload: pattern='$GLOB_PATTERN' matched=${#MATCHED_FILES[@]} files, total=$TOTAL_SIZE bytes"
 
-    echo "Will compress and upload ${#MATCHED_FILES[@]} file(s) to $SFTP_HOST:$DEST_DIR in batches of $BATCH_SIZE ..."
+    # --- Compress matched files to .gz before upload ---
+    echo ""
+    echo "Compressing ${#MATCHED_FILES[@]} file(s) to .gz ..."
+    GZ_FILES=()
+    for f in "${MATCHED_FILES[@]}"; do
+        fname=$(basename "$f")
+        base="${fname%.dat}"
+        gz_path="$SRC_DIR/${base}.gz"
+        gzip -c "$f" > "$gz_path"
+        if [ $? -ne 0 ]; then
+            log_message "ERROR" "Failed to compress '$f'. Aborting."
+            echo "Error: Compression failed for '$fname'."
+            exit 1
+        fi
+        gz_sz=$(stat -c%s "$gz_path" 2>/dev/null || stat -f%z "$gz_path" 2>/dev/null || echo "unknown")
+        log_message "INFO" "Compressed: $fname -> ${base}.gz ($gz_sz bytes)"
+        echo "  $fname -> ${base}.gz ($gz_sz bytes)"
+        GZ_FILES+=("$gz_path")
+    done
+
+    # Update references to point at .gz files for upload
+    MATCHED_FILES=("${GZ_FILES[@]}")
+    GLOB_PATTERN="$SRC_DIR/*.gz"
+    log_message "INFO" "Compression complete. ${#MATCHED_FILES[@]} .gz file(s) ready for upload."
+
+    echo "Uploading ${#MATCHED_FILES[@]} .gz file(s) to $SFTP_HOST:$DEST_DIR ..."
 else
     # ---- Single-file mode ----
     read -p "Enter the source directory: " SRC_DIR
@@ -221,16 +271,15 @@ EOF
 }
 
 if [ "$MULTI_FILE" = true ]; then
-    # ---- Batched compress & upload for wildcard mode ----
+    # ---- Batched upload for wildcard mode ----
     TOTAL_FILES=${#MATCHED_FILES[@]}
     TOTAL_BATCHES=$(( (TOTAL_FILES + BATCH_SIZE - 1) / BATCH_SIZE ))
     UPLOADED_OK=0
     UPLOADED_FAIL=0
 
-    log_message "INFO" "Starting batched compress & upload: $TOTAL_FILES files in $TOTAL_BATCHES batch(es) of up to $BATCH_SIZE"
+    log_message "INFO" "Starting batched upload: $TOTAL_FILES files in $TOTAL_BATCHES batch(es) of up to $BATCH_SIZE"
     echo ""
-    echo "Processing $TOTAL_FILES file(s) in batches of $BATCH_SIZE ($TOTAL_BATCHES batch(es)) ..."
-    echo "Each batch: compress -> upload -> cleanup .gz files"
+    echo "Uploading $TOTAL_FILES file(s) in batches of $BATCH_SIZE ($TOTAL_BATCHES batch(es)) ..."
     echo ""
 
     for (( batch=0; batch<TOTAL_BATCHES; batch++ )); do
@@ -245,63 +294,19 @@ if [ "$MULTI_FILE" = true ]; then
         BATCH_FILES=("${MATCHED_FILES[@]:$start:$batch_count}")
 
         echo "--- Batch $batch_num/$TOTAL_BATCHES ($batch_count files) ---"
-        log_message "INFO" "Batch $batch_num/$TOTAL_BATCHES: processing files $((start+1))-$end of $TOTAL_FILES"
+        log_message "INFO" "Batch $batch_num/$TOTAL_BATCHES: uploading files $((start+1))-$end of $TOTAL_FILES"
 
-        # --- Compress this batch ---
-        echo "  Compressing $batch_count file(s)..."
-        BATCH_GZ_FILES=()
-        COMPRESS_FAILED=false
-        for f in "${BATCH_FILES[@]}"; do
-            fname=$(basename "$f")
-            base="${fname%.dat}"
-            gz_path="$SRC_DIR/${base}.gz"
-            gzip -c "$f" > "$gz_path"
-            if [ $? -ne 0 ]; then
-                log_message "ERROR" "Failed to compress '$f' in batch $batch_num"
-                echo "    Error: Compression failed for '$fname'"
-                COMPRESS_FAILED=true
-                break
-            fi
-            gz_sz=$(stat -c%s "$gz_path" 2>/dev/null || stat -f%z "$gz_path" 2>/dev/null || echo "unknown")
-            log_message "INFO" "Compressed: $fname -> ${base}.gz ($gz_sz bytes)"
-            BATCH_GZ_FILES+=("$gz_path")
-        done
-
-        if [ "$COMPRESS_FAILED" = true ]; then
-            # Clean up any .gz files created in this batch
-            for gz in "${BATCH_GZ_FILES[@]}"; do
-                rm -f "$gz" 2>/dev/null
-            done
-            UPLOADED_FAIL=$(( UPLOADED_FAIL + batch_count ))
-            log_message "ERROR" "Batch $batch_num/$TOTAL_BATCHES: compression failed, skipping upload"
-            echo "  Batch $batch_num FAILED (compression error)"
-            continue
-        fi
-
-        echo "  Uploading ${#BATCH_GZ_FILES[@]} .gz file(s)..."
-        log_message "INFO" "Batch $batch_num: uploading ${#BATCH_GZ_FILES[@]} compressed files"
-
-        # --- Upload the compressed batch ---
-        sftp_put_files "${BATCH_GZ_FILES[@]}"
+        sftp_put_files "${BATCH_FILES[@]}"
         BATCH_RC=$?
 
         if [ $BATCH_RC -eq 0 ]; then
             UPLOADED_OK=$(( UPLOADED_OK + batch_count ))
             log_message "SUCCESS" "Batch $batch_num/$TOTAL_BATCHES: $batch_count file(s) uploaded successfully"
             echo "  Batch $batch_num complete — $batch_count file(s) OK"
-
-            # --- Clean up .gz files after successful upload ---
-            for gz in "${BATCH_GZ_FILES[@]}"; do
-                rm -f "$gz" 2>/dev/null
-                log_message "INFO" "Removed temporary .gz file: $gz"
-            done
-            echo "  Cleaned up ${#BATCH_GZ_FILES[@]} temporary .gz file(s)"
         else
             UPLOADED_FAIL=$(( UPLOADED_FAIL + batch_count ))
             log_message "ERROR" "Batch $batch_num/$TOTAL_BATCHES: upload failed"
-            echo "  Batch $batch_num FAILED (upload error)"
-            # Keep .gz files for retry/debugging
-            echo "  Note: .gz files retained for debugging: ${BATCH_GZ_FILES[*]}"
+            echo "  Batch $batch_num FAILED"
         fi
     done
 
@@ -352,7 +357,7 @@ if [ "$CLEANUP_ACTION" = "2" ]; then
     if [ "$MULTI_FILE" = true ]; then
         DELETED=0
         FAILED=0
-        for f in "${ORIGINAL_FILES[@]}"; do
+        for f in "${MATCHED_FILES[@]}"; do
             if rm -f "$f" 2>/dev/null; then
                 log_message "INFO" "Deleted source file: $f"
                 ((DELETED++))
@@ -389,7 +394,7 @@ elif [ "$CLEANUP_ACTION" = "3" ]; then
         if [ "$MULTI_FILE" = true ]; then
             MOVED=0
             FAILED=0
-            for f in "${ORIGINAL_FILES[@]}"; do
+            for f in "${MATCHED_FILES[@]}"; do
                 if mv "$f" "$PROCESSED_DIR/" 2>/dev/null; then
                     log_message "INFO" "Moved source file to processed: $f -> $PROCESSED_DIR/$(basename "$f")"
                     ((MOVED++))
