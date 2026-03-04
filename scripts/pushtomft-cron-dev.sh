@@ -409,6 +409,17 @@ if [ "$MULTI_FILE" = true ]; then
             for (( csv_i=0; csv_i<batch_count; csv_i++ )); do
                 csv_record "$(basename "${BATCH_FILES[$csv_i]}")"
             done
+            # Remove original .dat files for this batch
+            for (( dat_i=0; dat_i<batch_count; dat_i++ )); do
+                orig_dat="${ORIGINAL_DAT_FILES[$((start + dat_i))]}"
+                if [ -f "$orig_dat" ]; then
+                    if rm -f "$orig_dat" 2>/dev/null; then
+                        log_message "INFO" "Removed original .dat after successful upload: $orig_dat"
+                    else
+                        log_message "ERROR" "Failed to remove original .dat: $orig_dat"
+                    fi
+                fi
+            done
         else
             UPLOADED_FAIL=$(( UPLOADED_FAIL + batch_count ))
             log_message "ERROR" "Batch $batch_num/$TOTAL_BATCHES: upload failed"
@@ -434,6 +445,14 @@ else
     if [ $? -eq 0 ]; then
         log_message "SUCCESS" "File '$FILENAME' uploaded successfully to $DEST_DIR"
         csv_record "$FILENAME"
+        # Remove original .dat file after successful upload
+        if [ -f "$ORIGINAL_DAT_FILE" ]; then
+            if rm -f "$ORIGINAL_DAT_FILE" 2>/dev/null; then
+                log_message "INFO" "Removed original .dat after successful upload: $ORIGINAL_DAT_FILE"
+            else
+                log_message "ERROR" "Failed to remove original .dat: $ORIGINAL_DAT_FILE"
+            fi
+        fi
     else
         log_message "ERROR" "File upload failed for '$FILENAME'"
         exit 1
@@ -448,7 +467,7 @@ fi
 PROCESSED_DATE_DIR="$PROCESSED_DIR/$(date +"%m%d%Y")"
 
 if [ "$CLEANUP" = "delete" ]; then
-    # Delete .gz files and original .dat files
+    # Delete .gz files (original .dat files already removed after successful upload)
     if [ "$MULTI_FILE" = true ]; then
         DELETED=0
         FAILED=0
@@ -461,13 +480,6 @@ if [ "$CLEANUP" = "delete" ]; then
                 ((FAILED++))
             fi
         done
-        for f in "${ORIGINAL_DAT_FILES[@]}"; do
-            if rm -f "$f" 2>/dev/null; then
-                log_message "INFO" "Deleted original .dat file: $f"
-            else
-                log_message "ERROR" "Failed to delete original .dat file: $f"
-            fi
-        done
         log_message "INFO" "Post-upload cleanup (delete): $DELETED .gz deleted, $FAILED failed"
     else
         if rm -f "$FILE_PATH" 2>/dev/null; then
@@ -475,15 +487,10 @@ if [ "$CLEANUP" = "delete" ]; then
         else
             log_message "ERROR" "Failed to delete .gz file: $FILE_PATH"
         fi
-        if rm -f "$ORIGINAL_DAT_FILE" 2>/dev/null; then
-            log_message "INFO" "Deleted original .dat file: $ORIGINAL_DAT_FILE"
-        else
-            log_message "ERROR" "Failed to delete original .dat file: $ORIGINAL_DAT_FILE"
-        fi
     fi
 
 elif [ "$CLEANUP" = "move" ]; then
-    # Move .gz files to date-based processed directory and remove original .dat files
+    # Move .gz files to date-based processed directory (original .dat already removed after upload)
     mkdir -p "$PROCESSED_DATE_DIR" 2>/dev/null
     if [ ! -d "$PROCESSED_DATE_DIR" ]; then
         log_message "ERROR" "Failed to create processed directory: $PROCESSED_DATE_DIR"
@@ -494,8 +501,6 @@ elif [ "$CLEANUP" = "move" ]; then
         if [ "$MULTI_FILE" = true ]; then
             MOVED=0
             FAILED=0
-            DAT_DELETED=0
-            DAT_FAILED=0
             for f in "${MATCHED_FILES[@]}"; do
                 if mv "$f" "$PROCESSED_DATE_DIR/" 2>/dev/null; then
                     log_message "INFO" "Moved .gz to processed: $f -> $PROCESSED_DATE_DIR/$(basename "$f")"
@@ -505,26 +510,12 @@ elif [ "$CLEANUP" = "move" ]; then
                     ((FAILED++))
                 fi
             done
-            for f in "${ORIGINAL_DAT_FILES[@]}"; do
-                if rm -f "$f" 2>/dev/null; then
-                    log_message "INFO" "Removed original .dat file: $f"
-                    ((DAT_DELETED++))
-                else
-                    log_message "ERROR" "Failed to remove original .dat file: $f"
-                    ((DAT_FAILED++))
-                fi
-            done
-            log_message "INFO" "Post-upload cleanup (move): $MOVED .gz moved, $FAILED failed | $DAT_DELETED .dat removed, $DAT_FAILED failed"
+            log_message "INFO" "Post-upload cleanup (move): $MOVED .gz moved, $FAILED failed"
         else
             if mv "$FILE_PATH" "$PROCESSED_DATE_DIR/" 2>/dev/null; then
                 log_message "INFO" "Moved .gz to processed: $FILE_PATH -> $PROCESSED_DATE_DIR/$FILENAME"
             else
                 log_message "ERROR" "Failed to move .gz file: $FILE_PATH -> $PROCESSED_DATE_DIR/"
-            fi
-            if rm -f "$ORIGINAL_DAT_FILE" 2>/dev/null; then
-                log_message "INFO" "Removed original .dat file: $ORIGINAL_DAT_FILE"
-            else
-                log_message "ERROR" "Failed to remove original .dat file: $ORIGINAL_DAT_FILE"
             fi
         fi
     fi
