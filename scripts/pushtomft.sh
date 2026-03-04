@@ -440,3 +440,5 @@ log_message "INFO" "=== SFTP Transfer Session Completed ==="
 
 # TODO: [x] Add logic to say what file number is compressing or being uploaded eg 3 of 3400
 # TODO: [] Check on setting up cron job
+# TODO: [] Add logic to generate a csv of files processed
+# TODO: [] Add logic to create subdirectory under processed to move .gz to and remove .dat files
