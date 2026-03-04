@@ -18,8 +18,10 @@
 #   -f FILENAME      Filename for single-file mode
 #   -p SFTP_PASS     SFTP password (or set SFTP_PASS env var; omit to use SSH key)
 #   -k KEY_FILE      Path to SSH private key (default: ~/.ssh/id_ed25519)
-#   -c CLEANUP       Post-upload action: keep (default) | delete | move
-#   -P PROCESSED_DIR Directory to move files to when cleanup=move
+#   -c CLEANUP       Post-upload action: move (default) | keep | delete
+#                    move = move .gz to processed dir and remove original .dat
+#   -P PROCESSED_DIR Base directory for processed files when cleanup=move
+#                    Files are placed in PROCESSED_DIR/mmDDyyyy/
 #                    (default: /delphix/DeIdentified/processed)
 #   -h               Show this help message
 #
@@ -45,7 +47,7 @@ SFTP_HOST="54.80.94.146"
 PROD_DEST_DIR="/genius/ctedw/stg/inbound/"
 BATCH_SIZE=50
 DEFAULT_EXT="dat"
-DEFAULT_CLEANUP="keep"
+DEFAULT_CLEANUP="move"
 DEFAULT_KEY_FILE="$HOME/.ssh/id_ed25519"
 DEFAULT_PROCESSED_DIR="/delphix/DeIdentified/processed"
 
@@ -256,6 +258,7 @@ if [ "$MODE" = "wildcard" ]; then
     # --- Compress matched files to .gz before upload ---
     TOTAL_TO_COMPRESS=${#MATCHED_FILES[@]}
     log_message "INFO" "Compressing $TOTAL_TO_COMPRESS file(s) to .gz ..."
+    ORIGINAL_DAT_FILES=("${MATCHED_FILES[@]}")
     GZ_FILES=()
     COMPRESS_NUM=0
     for f in "${MATCHED_FILES[@]}"; do
@@ -288,6 +291,8 @@ else
 
     FILESIZE=$(stat -c%s "$FILE_PATH" 2>/dev/null || stat -f%z "$FILE_PATH" 2>/dev/null || echo "unknown")
     log_message "INFO" "File to upload: $FILE_PATH (Size: $FILESIZE bytes)"
+
+    ORIGINAL_DAT_FILE="$FILE_PATH"
 
     # --- Compress to .gz before upload ---
     BASE_NAME="$(basename "$FILE_PATH")"
@@ -438,57 +443,88 @@ fi
 # =============================================================================
 # Post-upload Cleanup
 # =============================================================================
+
+# Build the date-based processed directory (used by "move" action)
+PROCESSED_DATE_DIR="$PROCESSED_DIR/$(date +"%m%d%Y")"
+
 if [ "$CLEANUP" = "delete" ]; then
+    # Delete .gz files and original .dat files
     if [ "$MULTI_FILE" = true ]; then
         DELETED=0
         FAILED=0
         for f in "${MATCHED_FILES[@]}"; do
             if rm -f "$f" 2>/dev/null; then
-                log_message "INFO" "Deleted source file: $f"
+                log_message "INFO" "Deleted .gz file: $f"
                 ((DELETED++))
             else
-                log_message "ERROR" "Failed to delete source file: $f"
+                log_message "ERROR" "Failed to delete .gz file: $f"
                 ((FAILED++))
             fi
         done
-        log_message "INFO" "Post-upload cleanup (delete): $DELETED deleted, $FAILED failed"
+        for f in "${ORIGINAL_DAT_FILES[@]}"; do
+            if rm -f "$f" 2>/dev/null; then
+                log_message "INFO" "Deleted original .dat file: $f"
+            else
+                log_message "ERROR" "Failed to delete original .dat file: $f"
+            fi
+        done
+        log_message "INFO" "Post-upload cleanup (delete): $DELETED .gz deleted, $FAILED failed"
     else
         if rm -f "$FILE_PATH" 2>/dev/null; then
-            log_message "INFO" "Deleted source file: $FILE_PATH"
+            log_message "INFO" "Deleted .gz file: $FILE_PATH"
         else
-            log_message "ERROR" "Failed to delete source file: $FILE_PATH"
+            log_message "ERROR" "Failed to delete .gz file: $FILE_PATH"
+        fi
+        if rm -f "$ORIGINAL_DAT_FILE" 2>/dev/null; then
+            log_message "INFO" "Deleted original .dat file: $ORIGINAL_DAT_FILE"
+        else
+            log_message "ERROR" "Failed to delete original .dat file: $ORIGINAL_DAT_FILE"
         fi
     fi
 
 elif [ "$CLEANUP" = "move" ]; then
-    if [ ! -d "$PROCESSED_DIR" ]; then
-        mkdir -p "$PROCESSED_DIR" 2>/dev/null
-        if [ $? -ne 0 ]; then
-            log_message "ERROR" "Failed to create processed directory: $PROCESSED_DIR"
-            log_message "INFO" "Source file(s) retained (processed dir creation failed)."
-            # Don't exit — treat as non-fatal
-        fi
+    # Move .gz files to date-based processed directory and remove original .dat files
+    mkdir -p "$PROCESSED_DATE_DIR" 2>/dev/null
+    if [ ! -d "$PROCESSED_DATE_DIR" ]; then
+        log_message "ERROR" "Failed to create processed directory: $PROCESSED_DATE_DIR"
+        log_message "INFO" "Source file(s) retained (processed dir creation failed)."
     fi
 
-    if [ -d "$PROCESSED_DIR" ]; then
+    if [ -d "$PROCESSED_DATE_DIR" ]; then
         if [ "$MULTI_FILE" = true ]; then
             MOVED=0
             FAILED=0
+            DAT_DELETED=0
+            DAT_FAILED=0
             for f in "${MATCHED_FILES[@]}"; do
-                if mv "$f" "$PROCESSED_DIR/" 2>/dev/null; then
-                    log_message "INFO" "Moved source file to processed: $f -> $PROCESSED_DIR/$(basename "$f")"
+                if mv "$f" "$PROCESSED_DATE_DIR/" 2>/dev/null; then
+                    log_message "INFO" "Moved .gz to processed: $f -> $PROCESSED_DATE_DIR/$(basename "$f")"
                     ((MOVED++))
                 else
-                    log_message "ERROR" "Failed to move source file: $f"
+                    log_message "ERROR" "Failed to move .gz file: $f"
                     ((FAILED++))
                 fi
             done
-            log_message "INFO" "Post-upload cleanup (move): $MOVED moved, $FAILED failed"
+            for f in "${ORIGINAL_DAT_FILES[@]}"; do
+                if rm -f "$f" 2>/dev/null; then
+                    log_message "INFO" "Removed original .dat file: $f"
+                    ((DAT_DELETED++))
+                else
+                    log_message "ERROR" "Failed to remove original .dat file: $f"
+                    ((DAT_FAILED++))
+                fi
+            done
+            log_message "INFO" "Post-upload cleanup (move): $MOVED .gz moved, $FAILED failed | $DAT_DELETED .dat removed, $DAT_FAILED failed"
         else
-            if mv "$FILE_PATH" "$PROCESSED_DIR/" 2>/dev/null; then
-                log_message "INFO" "Moved source file: $FILE_PATH -> $PROCESSED_DIR/$FILENAME"
+            if mv "$FILE_PATH" "$PROCESSED_DATE_DIR/" 2>/dev/null; then
+                log_message "INFO" "Moved .gz to processed: $FILE_PATH -> $PROCESSED_DATE_DIR/$FILENAME"
             else
-                log_message "ERROR" "Failed to move source file: $FILE_PATH -> $PROCESSED_DIR/"
+                log_message "ERROR" "Failed to move .gz file: $FILE_PATH -> $PROCESSED_DATE_DIR/"
+            fi
+            if rm -f "$ORIGINAL_DAT_FILE" 2>/dev/null; then
+                log_message "INFO" "Removed original .dat file: $ORIGINAL_DAT_FILE"
+            else
+                log_message "ERROR" "Failed to remove original .dat file: $ORIGINAL_DAT_FILE"
             fi
         fi
     fi
