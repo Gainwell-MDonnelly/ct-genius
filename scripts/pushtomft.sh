@@ -143,12 +143,17 @@ if [ "$UPLOAD_MODE" = "2" ]; then
 
     # --- Compress matched files to .gz before upload ---
     echo ""
-    echo "Compressing ${#MATCHED_FILES[@]} file(s) to .gz ..."
+    TOTAL_TO_COMPRESS=${#MATCHED_FILES[@]}
+    echo "Compressing $TOTAL_TO_COMPRESS file(s) to .gz ..."
     GZ_FILES=()
+    COMPRESS_NUM=0
     for f in "${MATCHED_FILES[@]}"; do
+        COMPRESS_NUM=$((COMPRESS_NUM + 1))
         fname=$(basename "$f")
         base="${fname%.dat}"
         gz_path="$SRC_DIR/${base}.gz"
+        echo "  [$COMPRESS_NUM of $TOTAL_TO_COMPRESS] Compressing $fname ..."
+        log_message "INFO" "Compressing file $COMPRESS_NUM of $TOTAL_TO_COMPRESS: $fname"
         gzip -c "$f" > "$gz_path"
         if [ $? -ne 0 ]; then
             log_message "ERROR" "Failed to compress '$f'. Aborting."
@@ -156,8 +161,8 @@ if [ "$UPLOAD_MODE" = "2" ]; then
             exit 1
         fi
         gz_sz=$(stat -c%s "$gz_path" 2>/dev/null || stat -f%z "$gz_path" 2>/dev/null || echo "unknown")
-        log_message "INFO" "Compressed: $fname -> ${base}.gz ($gz_sz bytes)"
-        echo "  $fname -> ${base}.gz ($gz_sz bytes)"
+        log_message "INFO" "Compressed $COMPRESS_NUM of $TOTAL_TO_COMPRESS: $fname -> ${base}.gz ($gz_sz bytes)"
+        echo "  [$COMPRESS_NUM of $TOTAL_TO_COMPRESS] $fname -> ${base}.gz ($gz_sz bytes)"
         GZ_FILES+=("$gz_path")
     done
 
@@ -296,6 +301,12 @@ if [ "$MULTI_FILE" = true ]; then
         echo "--- Batch $batch_num/$TOTAL_BATCHES ($batch_count files) ---"
         log_message "INFO" "Batch $batch_num/$TOTAL_BATCHES: uploading files $((start+1))-$end of $TOTAL_FILES"
 
+        for (( fi=0; fi<batch_count; fi++ )); do
+            file_num=$(( start + fi + 1 ))
+            echo "  [${file_num} of ${TOTAL_FILES}] Uploading $(basename "${BATCH_FILES[$fi]}") ..."
+            log_message "INFO" "Uploading file $file_num of $TOTAL_FILES: $(basename "${BATCH_FILES[$fi]}")"
+        done
+
         sftp_put_files "${BATCH_FILES[@]}"
         BATCH_RC=$?
 
@@ -424,3 +435,8 @@ fi
 echo ""
 echo "Transfer complete."
 log_message "INFO" "=== SFTP Transfer Session Completed ==="
+
+
+
+# TODO: [x] Add logic to say what file number is compressing or being uploaded eg 3 of 3400
+# TODO: [] Check on setting up cron job
