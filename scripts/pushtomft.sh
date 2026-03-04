@@ -1,7 +1,34 @@
 #!/bin/bash
 #
-# SFTP File Transfer Script
-# Connects to SFTP server and uploads a file to the specified destination
+# SFTP File Transfer Script (Interactive)
+# Connects to SFTP server and uploads a file to the specified destination.
+#
+# This script prompts the user for all required inputs at runtime.
+# For automated/cron usage, see pushtomft-cron-dev.sh.
+#
+# Interactive Prompts:
+#   1) Environment        — Dev or Prod
+#      - Prod uses the default destination: /genius/ctedw/stg/inbound/
+#      - Dev prompts for a custom destination directory
+#
+#   2) SFTP Credentials   — Username and password (entered at runtime)
+#
+#   3) Upload Mode        — Single file or wildcard pattern
+#      - Single file  : prompts for source directory and filename
+#      - Wildcard     : prompts for source directory and file extension
+#                        (e.g. dat, csv, tar.gz)
+#
+#   4) Upload Confirmation — Lists matched files and asks to proceed (wildcard only)
+#
+#   5) Post-upload Cleanup — Choose one of:
+#      - Keep   : leave source file(s) in place
+#      - Delete : remove source file(s)
+#      - Move   : move source file(s) to /delphix/DeIdentified/processed
+#
+# Notes:
+#   - Files are compressed to .gz before upload (.dat extension is stripped)
+#   - Wildcard uploads are batched (default: 50 files per SFTP session)
+#   - All activity is logged to ../logs/sftp_transfer_<datetime>.log
 #
 
 # SFTP Server Configuration
@@ -440,5 +467,5 @@ log_message "INFO" "=== SFTP Transfer Session Completed ==="
 
 # TODO: [x] Add logic to say what file number is compressing or being uploaded eg 3 of 3400
 # TODO: [] Check on setting up cron job
-# TODO: [] Add logic to generate a csv of files processed
-# TODO: [] Add logic to create subdirectory under processed to move .gz to and remove .dat files
+# TODO: [x] Add logic to generate a csv of files processed
+# TODO: [x] Add logic to create subdirectory under processed to move .gz to and remove .dat files
