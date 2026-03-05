@@ -225,11 +225,13 @@ log_message "INFO" "CSV output file: $CSV_FILE"
 # Helper: append a row to the CSV
 csv_record() {
     local fname="$1"
+    local fname_no_ext
     local row_date
     local row_time
+    fname_no_ext="${fname%.*}"
     row_date=$(date +"%m/%d/%Y")
     row_time=$(date +"%H:%M:%S")
-    echo "$fname,$row_date,$row_time" >> "$CSV_FILE"
+    echo "$fname_no_ext,$row_date,$row_time" >> "$CSV_FILE"
 }
 
 # =============================================================================
