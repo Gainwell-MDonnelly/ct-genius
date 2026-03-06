@@ -476,10 +476,10 @@ if [ "$CLEANUP" = "delete" ]; then
         for f in "${MATCHED_FILES[@]}"; do
             if rm -f "$f" 2>/dev/null; then
                 log_message "INFO" "Deleted .gz file: $f"
-                ((DELETED++))
+                DELETED=$((DELETED + 1))
             else
                 log_message "ERROR" "Failed to delete .gz file: $f"
-                ((FAILED++))
+                FAILED=$((FAILED + 1))
             fi
         done
         log_message "INFO" "Post-upload cleanup (delete): $DELETED .gz deleted, $FAILED failed"
@@ -506,10 +506,10 @@ elif [ "$CLEANUP" = "move" ]; then
             for f in "${MATCHED_FILES[@]}"; do
                 if mv "$f" "$PROCESSED_DATE_DIR/" 2>/dev/null; then
                     log_message "INFO" "Moved .gz to processed: $f -> $PROCESSED_DATE_DIR/$(basename "$f")"
-                    ((MOVED++))
+                    MOVED=$((MOVED + 1))
                 else
                     log_message "ERROR" "Failed to move .gz file: $f"
-                    ((FAILED++))
+                    FAILED=$((FAILED + 1))
                 fi
             done
             log_message "INFO" "Post-upload cleanup (move): $MOVED .gz moved, $FAILED failed"
