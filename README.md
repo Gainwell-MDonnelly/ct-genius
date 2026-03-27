@@ -31,16 +31,21 @@ flowchart LR
 ```
 ## Data
 ```mermaid
-flowchart TD
-A[MMIS db - Data Pump] --> B[Redact db]
-B[Redact db] --> C[PHI]
- C[PHI] --> B[Redact db]
-B[Redact db] --> I[Deidentified] 
-I[Deidentified] --> E[SQL* Spool data extracts]
-E[SQL* Spool data extracts] --> S[Data cleanup script]
-
-S[Data cleanup script]--> F[.gz zipped files]
+flowchart LR
+A[(MMIS)] -->|Data Pump| B[(Redact)]
+subgraph databsae server - 
+B[(Redact)]--> |SQL Spool Extract| I[DAT File]
+I[.DAT File] -->  S[Data cleanup script]
+ end
+ B[(Redact)] -->   Z[Delphix]
+ subgraph Delphix
+ Z[Delphix] --> |Delphix GUI| B[(Redact)]
+ end
+subgraph CTODCLNORA004
+S[Data cleanup script]--> |SFTP to Utility| F[.gz zipped files]
 F[.gz zipped files] --> G[Script push to MOVEit]
+G[Script push to MOVEit] --> H[.gz moved to /processed]
+end
 ```
 ## Infra
 ```mermaid
@@ -63,7 +68,8 @@ A[**CTODCLNORA004**<br>10.40.26.211] --> B[**ctxodclnutil001**<br>10.40.26.175]
 | CT dba | hanh.nguyen@gainwelltechnologies.com |
 
 ## Server Access
-- **CTODCLNORA004 - 10.26.40.175**
+- **CTODCLNORA004 - 10.26.40.175** (Utility server)
+
 
 
 ## Delphix
@@ -95,6 +101,10 @@ done
 
 ### Count of all files in a directory 
 `find . -maxdepth 1 -type f -name "*.dat" | wc -l`
+
+### Run script
+
+`./pushtomft-cron-dev.sh -s /delphix/DeIdentified -u gt114477 -x dat -k ~/.ssh/id_ed25519 -d /GENIUS/ctedw/stg/inbound/`
 
 ## Issues / Lessons Learned
 - Genius prefers .gz over .tar.gz (tar requires pre-code on Genius side). GZ built out of the box
