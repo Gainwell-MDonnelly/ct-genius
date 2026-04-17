@@ -47,6 +47,11 @@ F[.gz zipped files] --> G[Script push to MOVEit]
 G[Script push to MOVEit] --> H[.gz moved to /processed]
 end
 ```
+
+```mermaid
+flowchart LR
+
+```
 ## Infra
 ```mermaid
 
@@ -105,6 +110,18 @@ done
 ### Run script
 
 `./pushtomft-cron-dev.sh -s /delphix/DeIdentified -u gt114477 -x dat -k ~/.ssh/id_ed25519 -d /GENIUS/ctedw/stg/inbound/`
+
+### Cron Jobs
+  * View cron jobs
+  `crontab -l`
+
+ *  Modify cron jobs `crontab -e`
+
+* #### Cron job running (every hour)
+<!-- Need to specify full directory -->
+    `0 * * * * /delphix/DeIdentified/dev/pushtomft-cron-dev.sh -s /delphix/DeIdentified -u gt114477 -x dat -k ~/.ssh/id_ed25519 -d /GENIUS/ctedw/stg/inbound/ >> /delphix/DeIdentified/logs/mft.log 2>&1`
+
+
 
 ## Issues / Lessons Learned
 - Genius prefers .gz over .tar.gz (tar requires pre-code on Genius side). GZ built out of the box
