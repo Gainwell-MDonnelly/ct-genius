@@ -23,7 +23,14 @@
 #   -P PROCESSED_DIR Base directory for processed files when cleanup=move
 #                    Files are placed in PROCESSED_DIR/mmDDyyyy/
 #                    (default: /delphix/DeIdentified/processed)
+#   -q               Quiet mode: suppress stderr when no files found (exit 0)
 #   -h               Show this help message
+#
+# Email Notification:
+#   An email summary with a table of transferred files is sent to the
+#   configured recipient after each transfer session (success or partial
+#   failure). No email is sent when there are no files to process.
+#   Requires mailx, mail, or sendmail on the host.
 #
 # Environment Variables (override defaults):
 #   SFTP_USER        SFTP username
@@ -50,19 +57,13 @@ DEFAULT_EXT="dat"
 DEFAULT_CLEANUP="move"
 DEFAULT_KEY_FILE="$HOME/.ssh/id_ed25519"
 DEFAULT_PROCESSED_DIR="/delphix/DeIdentified/processed"
+EMAIL_TO="michael.donnelly@gainwelltechnologies.com"
 
 # =============================================================================
-# Logging
+# Logging (paths computed early; directory created after pre-flight check)
 # =============================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 LOG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/logs"
-LOG_FILE="$LOG_DIR/sftp_transfer_$(date +%Y%m%d_%H%M%S).log"
-
-mkdir -p "$LOG_DIR"
-if [ ! -d "$LOG_DIR" ]; then
-    echo "Error: Could not create log directory '$LOG_DIR'. Aborting." >&2
-    exit 1
-fi
 
 log_message() {
     local level="$1"
@@ -92,8 +93,9 @@ FILENAME=""
 KEY_FILE="$DEFAULT_KEY_FILE"
 CLEANUP="$DEFAULT_CLEANUP"
 PROCESSED_DIR="$DEFAULT_PROCESSED_DIR"
+QUIET=false
 
-while getopts "e:d:s:m:x:f:u:p:k:c:P:h" opt; do
+while getopts "e:d:s:m:x:f:u:p:k:c:P:qh" opt; do
     case $opt in
         e) ENV="$OPTARG" ;;
         d) DEST_DIR="$OPTARG" ;;
@@ -106,6 +108,7 @@ while getopts "e:d:s:m:x:f:u:p:k:c:P:h" opt; do
         k) KEY_FILE="$OPTARG" ;;
         c) CLEANUP="$OPTARG" ;;
         P) PROCESSED_DIR="$OPTARG" ;;
+        q) QUIET=true ;;
         h) usage ;;
         *) usage ;;
     esac
@@ -195,6 +198,38 @@ if [ ${#ERRORS[@]} -gt 0 ]; then
 fi
 
 # =============================================================================
+# Pre-flight File Check
+# Exits early when there are no files to process, avoiding creation of
+# empty log files and header-only CSV files on idle cron runs.
+# =============================================================================
+if [ "$MODE" = "wildcard" ]; then
+    _PREFLIGHT_GLOB="$SRC_DIR/*.$FILE_EXT"
+    _PREFLIGHT_FILES=( $_PREFLIGHT_GLOB )
+    if [ ${#_PREFLIGHT_FILES[@]} -eq 0 ] || [ ! -e "${_PREFLIGHT_FILES[0]}" ]; then
+        if [ "$QUIET" = false ]; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] No files matching '*.$FILE_EXT' in '$SRC_DIR'. Nothing to transfer." >&2
+        fi
+        exit 0
+    fi
+else
+    if [ ! -f "$SRC_DIR/$FILENAME" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Error: File '$SRC_DIR/$FILENAME' does not exist." >&2
+        exit 1
+    fi
+fi
+
+# =============================================================================
+# Initialize Logging (only reached when there are files to process)
+# =============================================================================
+LOG_FILE="$LOG_DIR/sftp_transfer_$(date +%Y%m%d_%H%M%S).log"
+
+mkdir -p "$LOG_DIR"
+if [ ! -d "$LOG_DIR" ]; then
+    echo "Error: Could not create log directory '$LOG_DIR'. Aborting." >&2
+    exit 1
+fi
+
+# =============================================================================
 # Session Banner
 # =============================================================================
 log_message "INFO" "=== Starting Automated SFTP Transfer Session ==="
@@ -232,6 +267,76 @@ csv_record() {
     row_date=$(date +"%m/%d/%Y")
     row_time=$(date +"%H:%M:%S")
     echo "$fname_no_ext,$row_date,$row_time" >> "$CSV_FILE"
+}
+
+# =============================================================================
+# Email Notification Helper
+# =============================================================================
+send_email() {
+    # --- Build subject line ---
+    local status_label
+    if [ "${UPLOADED_FAIL:-0}" -gt 0 ] && [ "${UPLOADED_OK:-0}" -gt 0 ]; then
+        status_label="PARTIAL"
+    elif [ "${UPLOADED_FAIL:-0}" -gt 0 ]; then
+        status_label="FAILED"
+    else
+        status_label="OK"
+    fi
+    local subject="[GENIUS SFTP] ${ENV^^}: ${UPLOADED_OK:-0} of ${TOTAL_FILES:-0} files transferred ($status_label) — $(date '+%Y-%m-%d %H:%M')"
+
+    # --- Build body ---
+    local body=""
+    body+="GENIUS SFTP Transfer Summary\n"
+    body+="$(printf '=%.0s' {1..50})\n\n"
+    body+="Environment : $ENV\n"
+    body+="Destination : $DEST_DIR\n"
+    body+="Server      : $SFTP_HOST\n"
+    body+="User        : $SFTP_USER\n"
+    body+="Auth        : $AUTH_METHOD\n"
+    body+="Cleanup     : $CLEANUP\n"
+    body+="Source Dir  : $SRC_DIR\n\n"
+
+    body+="Upload Result: ${UPLOADED_OK:-0} succeeded, ${UPLOADED_FAIL:-0} failed (${TOTAL_FILES:-0} total)\n\n"
+
+    # --- File table from CSV ---
+    if [ -f "$CSV_FILE" ] && [ "${CSV_ROW_COUNT:-0}" -gt 0 ]; then
+        body+="Files Transferred:\n"
+        body+="$(printf '%-50s %-14s %-10s' 'FILENAME' 'DATE' 'TIME')\n"
+        body+="$(printf '%-50s %-14s %-10s' '------------------------------------------------' '--------------' '----------')\n"
+        while IFS=',' read -r fname fdate ftime; do
+            body+="$(printf '%-50s %-14s %-10s' "$fname" "$fdate" "$ftime")\n"
+        done < <(tail -n +2 "$CSV_FILE")
+    else
+        body+="No files recorded in CSV.\n"
+    fi
+
+    body+="\nCSV Report  : $CSV_FILE\n"
+    body+="Log File    : $LOG_FILE\n\n"
+    body+="— pushtomft-cron-dev.sh (automated)\n"
+
+    # --- Detect mail utility and send ---
+    if command -v mailx &>/dev/null; then
+        echo -e "$body" | mailx -s "$subject" "$EMAIL_TO"
+    elif command -v mail &>/dev/null; then
+        echo -e "$body" | mail -s "$subject" "$EMAIL_TO"
+    elif command -v sendmail &>/dev/null; then
+        {
+            echo "To: $EMAIL_TO"
+            echo "Subject: $subject"
+            echo "Content-Type: text/plain; charset=UTF-8"
+            echo ""
+            echo -e "$body"
+        } | sendmail -t
+    else
+        log_message "WARN" "No mail utility found (mailx/mail/sendmail). Email notification skipped."
+        return 0
+    fi
+
+    if [ $? -eq 0 ]; then
+        log_message "INFO" "Email notification sent to $EMAIL_TO"
+    else
+        log_message "WARN" "Failed to send email notification to $EMAIL_TO"
+    fi
 }
 
 # =============================================================================
@@ -447,6 +552,10 @@ else
     if [ $? -eq 0 ]; then
         log_message "SUCCESS" "File '$FILENAME' uploaded successfully to $DEST_DIR"
         csv_record "$FILENAME"
+        # Normalize counters for single-file mode (used by send_email)
+        UPLOADED_OK=1
+        UPLOADED_FAIL=0
+        TOTAL_FILES=1
         # Remove original .dat file after successful upload
         if [ -f "$ORIGINAL_DAT_FILE" ]; then
             if rm -f "$ORIGINAL_DAT_FILE" 2>/dev/null; then
@@ -529,6 +638,11 @@ fi
 # CSV row count (subtract 1 for header)
 CSV_ROW_COUNT=$(( $(wc -l < "$CSV_FILE") - 1 ))
 log_message "INFO" "CSV report written: $CSV_FILE ($CSV_ROW_COUNT file(s) recorded)"
+
+# =============================================================================
+# Email Notification
+# =============================================================================
+send_email
 
 log_message "INFO" "=== Automated SFTP Transfer Session Completed ==="
 exit 0
